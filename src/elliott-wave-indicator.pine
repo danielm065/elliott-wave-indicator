@@ -1,0 +1,321 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © danielm065
+// Elliott Wave Buy Signal Indicator with Backtesting
+
+//@version=6
+indicator("Elliott Wave Signals", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+grp_zigzag = "🔀 Zigzag Settings"
+zigzag_depth = input.int(12, "Zigzag Depth", minval=1, group=grp_zigzag, tooltip="Higher = smoother waves, fewer signals")
+zigzag_deviation = input.float(5.0, "Zigzag Deviation %", minval=0.1, step=0.5, group=grp_zigzag)
+
+grp_elliott = "📊 Elliott Wave Settings"
+wave2_min_retrace = input.float(0.382, "Wave 2 Min Retracement", minval=0.1, maxval=0.9, step=0.01, group=grp_elliott)
+wave2_max_retrace = input.float(0.786, "Wave 2 Max Retracement", minval=0.1, maxval=0.99, step=0.01, group=grp_elliott)
+wave4_min_retrace = input.float(0.236, "Wave 4 Min Retracement", minval=0.1, maxval=0.9, step=0.01, group=grp_elliott)
+wave4_max_retrace = input.float(0.5, "Wave 4 Max Retracement", minval=0.1, maxval=0.9, step=0.01, group=grp_elliott)
+
+grp_targets = "🎯 Target Settings"
+target_fib = input.float(1.618, "Target Extension (Fibonacci)", minval=1.0, maxval=4.0, step=0.1, group=grp_targets)
+stop_loss_pct = input.float(2.0, "Stop Loss %", minval=0.5, maxval=10.0, step=0.5, group=grp_targets)
+
+grp_display = "📈 Display Settings"
+show_zigzag = input.bool(true, "Show Zigzag Lines", group=grp_display)
+show_fib_levels = input.bool(true, "Show Fibonacci Levels", group=grp_display)
+show_signals = input.bool(true, "Show Buy Signals", group=grp_display)
+show_stats = input.bool(true, "Show Statistics Table", group=grp_display)
+table_position = input.string("top_right", "Stats Table Position", options=["top_right", "top_left", "bottom_right", "bottom_left"], group=grp_display)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ZIGZAG CALCULATION
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Pivot detection
+pivot_high = ta.pivothigh(high, zigzag_depth, zigzag_depth)
+pivot_low = ta.pivotlow(low, zigzag_depth, zigzag_depth)
+
+// Store zigzag points
+var float[] zz_prices = array.new_float(0)
+var int[] zz_bars = array.new_int(0)
+var bool[] zz_is_high = array.new_bool(0)
+
+// Track last zigzag direction (true = up, false = down)
+var bool last_direction = na
+var float last_price = na
+var int last_bar = na
+
+// Process new pivots
+if not na(pivot_high)
+    pivot_bar = bar_index - zigzag_depth
+    // Check if we should add this high
+    if na(last_direction) or not last_direction
+        // Last was low or nothing, this high is valid
+        if array.size(zz_prices) > 0 and last_direction == false
+            // Check deviation
+            change_pct = math.abs(pivot_high - last_price) / last_price * 100
+            if change_pct >= zigzag_deviation
+                array.push(zz_prices, pivot_high)
+                array.push(zz_bars, pivot_bar)
+                array.push(zz_is_high, true)
+                last_direction := true
+                last_price := pivot_high
+                last_bar := pivot_bar
+        else if array.size(zz_prices) == 0
+            array.push(zz_prices, pivot_high)
+            array.push(zz_bars, pivot_bar)
+            array.push(zz_is_high, true)
+            last_direction := true
+            last_price := pivot_high
+            last_bar := pivot_bar
+    else if last_direction == true and pivot_high > last_price
+        // Replace last high with higher high
+        if array.size(zz_prices) > 0
+            array.set(zz_prices, array.size(zz_prices) - 1, pivot_high)
+            array.set(zz_bars, array.size(zz_bars) - 1, pivot_bar)
+            last_price := pivot_high
+            last_bar := pivot_bar
+
+if not na(pivot_low)
+    pivot_bar = bar_index - zigzag_depth
+    // Check if we should add this low
+    if na(last_direction) or last_direction
+        // Last was high or nothing, this low is valid
+        if array.size(zz_prices) > 0 and last_direction == true
+            // Check deviation
+            change_pct = math.abs(pivot_low - last_price) / last_price * 100
+            if change_pct >= zigzag_deviation
+                array.push(zz_prices, pivot_low)
+                array.push(zz_bars, pivot_bar)
+                array.push(zz_is_high, false)
+                last_direction := false
+                last_price := pivot_low
+                last_bar := pivot_bar
+        else if array.size(zz_prices) == 0
+            array.push(zz_prices, pivot_low)
+            array.push(zz_bars, pivot_bar)
+            array.push(zz_is_high, false)
+            last_direction := false
+            last_price := pivot_low
+            last_bar := pivot_bar
+    else if last_direction == false and pivot_low < last_price
+        // Replace last low with lower low
+        if array.size(zz_prices) > 0
+            array.set(zz_prices, array.size(zz_prices) - 1, pivot_low)
+            array.set(zz_bars, array.size(zz_bars) - 1, pivot_bar)
+            last_price := pivot_low
+            last_bar := pivot_bar
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ELLIOTT WAVE DETECTION
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Get recent zigzag points for analysis
+get_zz_point(idx) =>
+    size = array.size(zz_prices)
+    if idx < size
+        [array.get(zz_prices, size - 1 - idx), array.get(zz_bars, size - 1 - idx), array.get(zz_is_high, size - 1 - idx)]
+    else
+        [na, na, na]
+
+// Check for Wave 2 completion (potential Wave 3 start)
+// Pattern: Low(0) - High(1) - Low(2) where Low(2) retraces 38.2%-78.6% of move from Low(0) to High(1)
+detect_wave2_buy() =>
+    [p0, b0, h0] = get_zz_point(0)  // Most recent point
+    [p1, b1, h1] = get_zz_point(1)  // Previous point
+    [p2, b2, h2] = get_zz_point(2)  // Point before that
+    
+    signal = false
+    entry_price = 0.0
+    target_price = 0.0
+    stop_price = 0.0
+    
+    // Check pattern: need Low - High - Low (bullish setup)
+    if not na(p0) and not na(p1) and not na(p2)
+        if h2 == false and h1 == true and h0 == false  // Low - High - Low pattern
+            wave1_size = p1 - p2  // Wave 1 move
+            if wave1_size > 0  // Bullish Wave 1
+                retracement = (p1 - p0) / wave1_size
+                // Check if retracement is in valid range for Wave 2
+                if retracement >= wave2_min_retrace and retracement <= wave2_max_retrace
+                    // Valid Wave 2 setup
+                    signal := true
+                    entry_price := p0
+                    target_price := p0 + (wave1_size * target_fib)  // Wave 3 target
+                    stop_price := p0 * (1 - stop_loss_pct / 100)
+    
+    [signal, entry_price, target_price, stop_price, b0]
+
+// Check for Wave 4 completion (potential Wave 5 start)
+detect_wave4_buy() =>
+    [p0, b0, h0] = get_zz_point(0)
+    [p1, b1, h1] = get_zz_point(1)
+    [p2, b2, h2] = get_zz_point(2)
+    [p3, b3, h3] = get_zz_point(3)
+    [p4, b4, h4] = get_zz_point(4)
+    
+    signal = false
+    entry_price = 0.0
+    target_price = 0.0
+    stop_price = 0.0
+    
+    // Check pattern: Low - High - Low - High - Low (Wave 1-2-3-4 complete)
+    if not na(p0) and not na(p1) and not na(p2) and not na(p3) and not na(p4)
+        if h4 == false and h3 == true and h2 == false and h1 == true and h0 == false
+            wave1_size = p3 - p4
+            wave3_size = p1 - p2
+            wave3_retrace = (p1 - p0) / wave3_size
+            
+            // Validate Elliott rules
+            if wave1_size > 0 and wave3_size > 0  // Bullish
+                // Wave 3 should be larger than Wave 1 (usually)
+                // Wave 4 should retrace 23.6%-50% of Wave 3
+                if wave3_retrace >= wave4_min_retrace and wave3_retrace <= wave4_max_retrace
+                    // Wave 4 should not enter Wave 1 territory
+                    if p0 > p3
+                        signal := true
+                        entry_price := p0
+                        // Wave 5 often equals Wave 1
+                        target_price := p0 + wave1_size
+                        stop_price := p3 * 0.99  // Just below Wave 1 high
+    
+    [signal, entry_price, target_price, stop_price, b0]
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SIGNAL GENERATION & TRACKING
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Signal tracking arrays
+var int[] signal_bars = array.new_int(0)
+var float[] signal_entries = array.new_float(0)
+var float[] signal_targets = array.new_float(0)
+var float[] signal_stops = array.new_float(0)
+var int[] signal_results = array.new_int(0)  // 0=open, 1=win, -1=loss
+
+// Statistics
+var int total_signals = 0
+var int wins = 0
+var int losses = 0
+var int open_trades = 0
+
+// Check for new signals
+[w2_signal, w2_entry, w2_target, w2_stop, w2_bar] = detect_wave2_buy()
+[w4_signal, w4_entry, w4_target, w4_stop, w4_bar] = detect_wave4_buy()
+
+// Process Wave 2 signal
+var int last_w2_bar = 0
+if w2_signal and w2_bar != last_w2_bar and show_signals
+    last_w2_bar := w2_bar
+    array.push(signal_bars, w2_bar)
+    array.push(signal_entries, w2_entry)
+    array.push(signal_targets, w2_target)
+    array.push(signal_stops, w2_stop)
+    array.push(signal_results, 0)
+    total_signals += 1
+    open_trades += 1
+    
+    // Draw signal
+    label.new(w2_bar, w2_entry, "BUY\nW3", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+    if show_fib_levels
+        line.new(w2_bar, w2_target, bar_index + 20, w2_target, color=color.new(color.green, 50), style=line.style_dashed)
+        line.new(w2_bar, w2_stop, bar_index + 20, w2_stop, color=color.new(color.red, 50), style=line.style_dashed)
+
+// Process Wave 4 signal
+var int last_w4_bar = 0
+if w4_signal and w4_bar != last_w4_bar and show_signals
+    last_w4_bar := w4_bar
+    array.push(signal_bars, w4_bar)
+    array.push(signal_entries, w4_entry)
+    array.push(signal_targets, w4_target)
+    array.push(signal_stops, w4_stop)
+    array.push(signal_results, 0)
+    total_signals += 1
+    open_trades += 1
+    
+    // Draw signal
+    label.new(w4_bar, w4_entry, "BUY\nW5", style=label.style_label_up, color=color.teal, textcolor=color.white, size=size.small)
+    if show_fib_levels
+        line.new(w4_bar, w4_target, bar_index + 20, w4_target, color=color.new(color.teal, 50), style=line.style_dashed)
+        line.new(w4_bar, w4_stop, bar_index + 20, w4_stop, color=color.new(color.red, 50), style=line.style_dashed)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BACKTEST - Check open trades for target/stop hit
+// ══════════════════════════════════════════════════════════════════════════════
+
+if array.size(signal_results) > 0
+    for i = 0 to array.size(signal_results) - 1
+        if array.get(signal_results, i) == 0  // Open trade
+            target = array.get(signal_targets, i)
+            stop = array.get(signal_stops, i)
+            
+            // Check if target hit
+            if high >= target
+                array.set(signal_results, i, 1)
+                wins += 1
+                open_trades -= 1
+            // Check if stop hit
+            else if low <= stop
+                array.set(signal_results, i, -1)
+                losses += 1
+                open_trades -= 1
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DRAW ZIGZAG
+// ══════════════════════════════════════════════════════════════════════════════
+
+if show_zigzag and array.size(zz_prices) >= 2
+    for i = 0 to math.min(array.size(zz_prices) - 2, 50)
+        idx = array.size(zz_prices) - 1 - i
+        if idx > 0
+            p1 = array.get(zz_prices, idx)
+            b1 = array.get(zz_bars, idx)
+            p2 = array.get(zz_prices, idx - 1)
+            b2 = array.get(zz_bars, idx - 1)
+            line.new(b2, p2, b1, p1, color=color.new(color.blue, 30), width=2)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STATISTICS TABLE
+// ══════════════════════════════════════════════════════════════════════════════
+
+if show_stats
+    var table stats_table = table.new(
+        table_position == "top_right" ? position.top_right : 
+        table_position == "top_left" ? position.top_left : 
+        table_position == "bottom_right" ? position.bottom_right : 
+        position.bottom_left, 
+        2, 6, bgcolor=color.new(color.black, 20), border_width=1)
+    
+    closed_trades = wins + losses
+    win_rate = closed_trades > 0 ? (wins / closed_trades) * 100 : 0.0
+    
+    // Header
+    table.cell(stats_table, 0, 0, "📊 Elliott Wave Stats", text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 30))
+    table.cell(stats_table, 1, 0, timeframe.period, text_color=color.yellow, text_size=size.small, bgcolor=color.new(color.blue, 30))
+    
+    // Stats rows
+    table.cell(stats_table, 0, 1, "Total Signals", text_color=color.white, text_size=size.tiny)
+    table.cell(stats_table, 1, 1, str.tostring(total_signals), text_color=color.white, text_size=size.tiny)
+    
+    table.cell(stats_table, 0, 2, "Wins ✓", text_color=color.green, text_size=size.tiny)
+    table.cell(stats_table, 1, 2, str.tostring(wins), text_color=color.green, text_size=size.tiny)
+    
+    table.cell(stats_table, 0, 3, "Losses ✗", text_color=color.red, text_size=size.tiny)
+    table.cell(stats_table, 1, 3, str.tostring(losses), text_color=color.red, text_size=size.tiny)
+    
+    table.cell(stats_table, 0, 4, "Open Trades", text_color=color.yellow, text_size=size.tiny)
+    table.cell(stats_table, 1, 4, str.tostring(open_trades), text_color=color.yellow, text_size=size.tiny)
+    
+    // Win rate with color coding
+    win_rate_color = win_rate >= 60 ? color.green : win_rate >= 40 ? color.yellow : color.red
+    table.cell(stats_table, 0, 5, "Win Rate", text_color=color.white, text_size=size.small, bgcolor=color.new(color.gray, 50))
+    table.cell(stats_table, 1, 5, str.tostring(win_rate, "#.#") + "%", text_color=win_rate_color, text_size=size.normal, bgcolor=color.new(color.gray, 50))
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+alertcondition(w2_signal, "Wave 3 Buy Signal", "Elliott Wave: Potential Wave 3 start detected!")
+alertcondition(w4_signal, "Wave 5 Buy Signal", "Elliott Wave: Potential Wave 5 start detected!")
