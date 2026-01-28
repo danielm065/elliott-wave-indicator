@@ -1,0 +1,226 @@
+//@version=6
+indicator("Elliott Wave Signals", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// INPUTS
+grp_zigzag = "Zigzag Settings"
+zigzag_depth = input.int(12, "Zigzag Depth", minval=1, group=grp_zigzag)
+zigzag_deviation = input.float(5.0, "Zigzag Deviation %", minval=0.1, step=0.5, group=grp_zigzag)
+
+grp_elliott = "Elliott Wave Settings"
+wave2_min_retrace = input.float(0.382, "Wave 2 Min Retracement", minval=0.1, maxval=0.9, step=0.01, group=grp_elliott)
+wave2_max_retrace = input.float(0.786, "Wave 2 Max Retracement", minval=0.1, maxval=0.99, step=0.01, group=grp_elliott)
+wave4_min_retrace = input.float(0.236, "Wave 4 Min Retracement", minval=0.1, maxval=0.9, step=0.01, group=grp_elliott)
+wave4_max_retrace = input.float(0.5, "Wave 4 Max Retracement", minval=0.1, maxval=0.9, step=0.01, group=grp_elliott)
+
+grp_targets = "Target Settings"
+target_fib = input.float(1.618, "Target Extension", minval=1.0, maxval=4.0, step=0.1, group=grp_targets)
+stop_loss_pct = input.float(2.0, "Stop Loss %", minval=0.5, maxval=10.0, step=0.5, group=grp_targets)
+
+grp_display = "Display Settings"
+show_zigzag = input.bool(true, "Show Zigzag Lines", group=grp_display)
+show_signals = input.bool(true, "Show Buy Signals", group=grp_display)
+show_stats = input.bool(true, "Show Statistics Table", group=grp_display)
+
+// ZIGZAG - using built-in approach
+pivot_high_val = ta.pivothigh(high, zigzag_depth, zigzag_depth)
+pivot_low_val = ta.pivotlow(low, zigzag_depth, zigzag_depth)
+
+var float[] zz_price = array.new_float(0)
+var int[] zz_bar = array.new_int(0)
+var int[] zz_type = array.new_int(0)  // 1=high, -1=low
+
+var int direction = 0  // 0=none, 1=up, -1=down
+var float lastPrice = 0.0
+var int lastBar = 0
+
+if not na(pivot_high_val)
+    pBar = bar_index - zigzag_depth
+    if direction <= 0
+        if array.size(zz_price) > 0 and direction == -1
+            pct = math.abs(pivot_high_val - lastPrice) / lastPrice * 100
+            if pct >= zigzag_deviation
+                array.push(zz_price, pivot_high_val)
+                array.push(zz_bar, pBar)
+                array.push(zz_type, 1)
+                direction := 1
+                lastPrice := pivot_high_val
+                lastBar := pBar
+        else if array.size(zz_price) == 0
+            array.push(zz_price, pivot_high_val)
+            array.push(zz_bar, pBar)
+            array.push(zz_type, 1)
+            direction := 1
+            lastPrice := pivot_high_val
+            lastBar := pBar
+    else if direction == 1 and pivot_high_val > lastPrice
+        if array.size(zz_price) > 0
+            array.set(zz_price, array.size(zz_price) - 1, pivot_high_val)
+            array.set(zz_bar, array.size(zz_bar) - 1, pBar)
+            lastPrice := pivot_high_val
+            lastBar := pBar
+
+if not na(pivot_low_val)
+    pBar = bar_index - zigzag_depth
+    if direction >= 0
+        if array.size(zz_price) > 0 and direction == 1
+            pct = math.abs(pivot_low_val - lastPrice) / lastPrice * 100
+            if pct >= zigzag_deviation
+                array.push(zz_price, pivot_low_val)
+                array.push(zz_bar, pBar)
+                array.push(zz_type, -1)
+                direction := -1
+                lastPrice := pivot_low_val
+                lastBar := pBar
+        else if array.size(zz_price) == 0
+            array.push(zz_price, pivot_low_val)
+            array.push(zz_bar, pBar)
+            array.push(zz_type, -1)
+            direction := -1
+            lastPrice := pivot_low_val
+            lastBar := pBar
+    else if direction == -1 and pivot_low_val < lastPrice
+        if array.size(zz_price) > 0
+            array.set(zz_price, array.size(zz_price) - 1, pivot_low_val)
+            array.set(zz_bar, array.size(zz_bar) - 1, pBar)
+            lastPrice := pivot_low_val
+            lastBar := pBar
+
+// GET ZIGZAG POINT
+getPoint(idx) =>
+    sz = array.size(zz_price)
+    if idx < sz
+        [array.get(zz_price, sz - 1 - idx), array.get(zz_bar, sz - 1 - idx), array.get(zz_type, sz - 1 - idx)]
+    else
+        [0.0, 0, 0]
+
+// WAVE 2 DETECTION (for Wave 3 entry)
+detectW2() =>
+    [p0, b0, t0] = getPoint(0)
+    [p1, b1, t1] = getPoint(1)
+    [p2, b2, t2] = getPoint(2)
+    
+    sig = false
+    entry = 0.0
+    tgt = 0.0
+    stp = 0.0
+    
+    if p0 > 0 and p1 > 0 and p2 > 0
+        if t2 == -1 and t1 == 1 and t0 == -1
+            w1 = p1 - p2
+            if w1 > 0
+                ret = (p1 - p0) / w1
+                if ret >= wave2_min_retrace and ret <= wave2_max_retrace
+                    sig := true
+                    entry := p0
+                    tgt := p0 + (w1 * target_fib)
+                    stp := p0 * (1 - stop_loss_pct / 100)
+    [sig, entry, tgt, stp, b0]
+
+// WAVE 4 DETECTION (for Wave 5 entry)
+detectW4() =>
+    [p0, b0, t0] = getPoint(0)
+    [p1, b1, t1] = getPoint(1)
+    [p2, b2, t2] = getPoint(2)
+    [p3, b3, t3] = getPoint(3)
+    [p4, b4, t4] = getPoint(4)
+    
+    sig = false
+    entry = 0.0
+    tgt = 0.0
+    stp = 0.0
+    
+    if p0 > 0 and p1 > 0 and p2 > 0 and p3 > 0 and p4 > 0
+        if t4 == -1 and t3 == 1 and t2 == -1 and t1 == 1 and t0 == -1
+            w1 = p3 - p4
+            w3 = p1 - p2
+            if w1 > 0 and w3 > 0
+                ret = (p1 - p0) / w3
+                if ret >= wave4_min_retrace and ret <= wave4_max_retrace
+                    if p0 > p3
+                        sig := true
+                        entry := p0
+                        tgt := p0 + w1
+                        stp := p3 * 0.99
+    [sig, entry, tgt, stp, b0]
+
+// TRACKING
+var int[] sigBars = array.new_int(0)
+var float[] sigEntries = array.new_float(0)
+var float[] sigTargets = array.new_float(0)
+var float[] sigStops = array.new_float(0)
+var int[] sigResults = array.new_int(0)
+
+var int totalSig = 0
+var int wins = 0
+var int losses = 0
+
+[w2sig, w2entry, w2tgt, w2stp, w2bar] = detectW2()
+[w4sig, w4entry, w4tgt, w4stp, w4bar] = detectW4()
+
+var int lastW2 = 0
+if w2sig and w2bar != lastW2 and show_signals
+    lastW2 := w2bar
+    array.push(sigBars, w2bar)
+    array.push(sigEntries, w2entry)
+    array.push(sigTargets, w2tgt)
+    array.push(sigStops, w2stp)
+    array.push(sigResults, 0)
+    totalSig += 1
+    label.new(w2bar, w2entry, "BUY W3", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+var int lastW4 = 0
+if w4sig and w4bar != lastW4 and show_signals
+    lastW4 := w4bar
+    array.push(sigBars, w4bar)
+    array.push(sigEntries, w4entry)
+    array.push(sigTargets, w4tgt)
+    array.push(sigStops, w4stp)
+    array.push(sigResults, 0)
+    totalSig += 1
+    label.new(w4bar, w4entry, "BUY W5", style=label.style_label_up, color=color.teal, textcolor=color.white, size=size.small)
+
+// BACKTEST
+if array.size(sigResults) > 0
+    for i = 0 to array.size(sigResults) - 1
+        if array.get(sigResults, i) == 0
+            t = array.get(sigTargets, i)
+            s = array.get(sigStops, i)
+            if high >= t
+                array.set(sigResults, i, 1)
+                wins += 1
+            else if low <= s
+                array.set(sigResults, i, -1)
+                losses += 1
+
+// DRAW ZIGZAG
+if show_zigzag and array.size(zz_price) >= 2 and barstate.islast
+    for i = 0 to math.min(array.size(zz_price) - 2, 30)
+        idx = array.size(zz_price) - 1 - i
+        if idx > 0
+            b1 = array.get(zz_bar, idx-1)
+            b2 = array.get(zz_bar, idx)
+            // Only draw if bars are within 500 bars of current
+            if bar_index - b1 < 500 and bar_index - b2 < 500
+                line.new(b1, array.get(zz_price, idx-1), b2, array.get(zz_price, idx), color=color.blue, width=2)
+
+// STATS TABLE
+if show_stats
+    var table tbl = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 20))
+    closed = wins + losses
+    rate = closed > 0 ? (wins * 100.0 / closed) : 0.0
+    rateCol = rate >= 60 ? color.green : rate >= 40 ? color.yellow : color.red
+    
+    table.cell(tbl, 0, 0, "Elliott Stats", text_color=color.white, bgcolor=color.blue)
+    table.cell(tbl, 1, 0, timeframe.period, text_color=color.yellow, bgcolor=color.blue)
+    table.cell(tbl, 0, 1, "Signals", text_color=color.white)
+    table.cell(tbl, 1, 1, str.tostring(totalSig), text_color=color.white)
+    table.cell(tbl, 0, 2, "Wins", text_color=color.green)
+    table.cell(tbl, 1, 2, str.tostring(wins), text_color=color.green)
+    table.cell(tbl, 0, 3, "Losses", text_color=color.red)
+    table.cell(tbl, 1, 3, str.tostring(losses), text_color=color.red)
+    table.cell(tbl, 0, 4, "Win Rate", text_color=color.white, bgcolor=color.gray)
+    table.cell(tbl, 1, 4, str.tostring(rate, "#.#") + "%", text_color=rateCol, bgcolor=color.gray)
+
+// ALERTS
+alertcondition(w2sig, "Wave 3 Buy", "Elliott: Wave 3 entry!")
+alertcondition(w4sig, "Wave 5 Buy", "Elliott: Wave 5 entry!")
