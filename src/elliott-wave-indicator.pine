@@ -43,8 +43,8 @@ var float[] zz_prices = array.new_float(0)
 var int[] zz_bars = array.new_int(0)
 var bool[] zz_is_high = array.new_bool(0)
 
-// Track last zigzag direction (true = up, false = down)
-var bool last_direction = na
+// Track last zigzag direction (1 = up, -1 = down, 0 = unset)
+var int last_direction = 0
 var float last_price = na
 var int last_bar = na
 
@@ -52,26 +52,26 @@ var int last_bar = na
 if not na(pivot_high)
     pivot_bar = bar_index - zigzag_depth
     // Check if we should add this high
-    if na(last_direction) or not last_direction
+    if last_direction == 0 or last_direction == -1
         // Last was low or nothing, this high is valid
-        if array.size(zz_prices) > 0 and last_direction == false
+        if array.size(zz_prices) > 0 and last_direction == -1
             // Check deviation
             change_pct = math.abs(pivot_high - last_price) / last_price * 100
             if change_pct >= zigzag_deviation
                 array.push(zz_prices, pivot_high)
                 array.push(zz_bars, pivot_bar)
                 array.push(zz_is_high, true)
-                last_direction := true
+                last_direction := 1
                 last_price := pivot_high
                 last_bar := pivot_bar
         else if array.size(zz_prices) == 0
             array.push(zz_prices, pivot_high)
             array.push(zz_bars, pivot_bar)
             array.push(zz_is_high, true)
-            last_direction := true
+            last_direction := 1
             last_price := pivot_high
             last_bar := pivot_bar
-    else if last_direction == true and pivot_high > last_price
+    else if last_direction == 1 and pivot_high > last_price
         // Replace last high with higher high
         if array.size(zz_prices) > 0
             array.set(zz_prices, array.size(zz_prices) - 1, pivot_high)
@@ -82,26 +82,26 @@ if not na(pivot_high)
 if not na(pivot_low)
     pivot_bar = bar_index - zigzag_depth
     // Check if we should add this low
-    if na(last_direction) or last_direction
+    if last_direction == 0 or last_direction == 1
         // Last was high or nothing, this low is valid
-        if array.size(zz_prices) > 0 and last_direction == true
+        if array.size(zz_prices) > 0 and last_direction == 1
             // Check deviation
             change_pct = math.abs(pivot_low - last_price) / last_price * 100
             if change_pct >= zigzag_deviation
                 array.push(zz_prices, pivot_low)
                 array.push(zz_bars, pivot_bar)
                 array.push(zz_is_high, false)
-                last_direction := false
+                last_direction := -1
                 last_price := pivot_low
                 last_bar := pivot_bar
         else if array.size(zz_prices) == 0
             array.push(zz_prices, pivot_low)
             array.push(zz_bars, pivot_bar)
             array.push(zz_is_high, false)
-            last_direction := false
+            last_direction := -1
             last_price := pivot_low
             last_bar := pivot_bar
-    else if last_direction == false and pivot_low < last_price
+    else if last_direction == -1 and pivot_low < last_price
         // Replace last low with lower low
         if array.size(zz_prices) > 0
             array.set(zz_prices, array.size(zz_prices) - 1, pivot_low)
