@@ -207,7 +207,10 @@ if not na(pl)
 
 getPt(i) =>
     sz = array.size(zzP)
-    i < sz ? [array.get(zzP, sz-1-i), array.get(zzB, sz-1-i), array.get(zzT, sz-1-i)] : [0.0, 0, 0]
+    if i < sz
+        [array.get(zzP, sz-1-i), array.get(zzB, sz-1-i), array.get(zzT, sz-1-i)]
+    else
+        [0.0, 0, 0]
 
 // ════════════════════════════════════════════════════════════════
 // WAVE DETECTION WITH CONFLUENCE

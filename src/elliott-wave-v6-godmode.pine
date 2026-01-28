@@ -1,0 +1,361 @@
+//@version=6
+indicator("Elliott Wave GOD MODE", overlay=true, max_labels_count=100, max_lines_count=100)
+
+// ════════════════════════════════════════════════════════════════
+// 🔥 GOD MODE - Maximum Win Rate
+// Extremely selective - only the BEST setups
+// ════════════════════════════════════════════════════════════════
+
+grp_score = "🎯 SCORING (Strict)"
+min_score = input.int(8, "Min Score (out of 10)", minval=5, maxval=10, group=grp_score)
+min_rr = input.float(3.0, "Min Risk:Reward", minval=2.0, maxval=5.0, group=grp_score)
+
+grp_confirm = "✅ CONFIRMATIONS"
+require_bull_candle = input.bool(true, "Require Bullish Candle", group=grp_confirm, tooltip="Entry candle must be green")
+require_ema_stack = input.bool(true, "Require EMA Stack", group=grp_confirm, tooltip="EMA20 > EMA50 > EMA200")
+require_higher_tf = input.bool(true, "Require Higher TF Trend", group=grp_confirm, tooltip="4H/Daily must be bullish")
+require_volume_spike = input.bool(true, "Require Volume Spike", group=grp_confirm, tooltip="Volume > 1.5x average")
+
+grp_zz = "🔀 ZIGZAG"
+zz_depth = input.int(14, "Depth", minval=8, maxval=30, group=grp_zz)
+zz_dev = input.float(2.0, "Deviation %", group=grp_zz)
+
+grp_ew = "🌊 ELLIOTT (Strict)"
+w2_min = input.float(0.5, "Wave 2 Min (Golden)", group=grp_ew)
+w2_max = input.float(0.618, "Wave 2 Max (Golden)", group=grp_ew)
+min_wave = input.float(3.0, "Min Wave Size %", group=grp_ew)
+
+grp_tp = "💰 TARGETS"
+tp_fib = input.float(2.0, "Take Profit Fib", group=grp_tp)
+sl_pct = input.float(1.5, "Stop Loss %", group=grp_tp)
+min_bars = input.int(15, "Min Bars Between", group=grp_tp)
+
+grp_vis = "👁 VISUALS"
+show_zz = input.bool(true, "Zigzag", group=grp_vis)
+show_emas = input.bool(true, "EMAs", group=grp_vis)
+show_stats = input.bool(true, "Stats", group=grp_vis)
+show_cond = input.bool(true, "Conditions", group=grp_vis)
+
+// ════════════════════════════════════════════════════════════════
+// INDICATORS
+// ════════════════════════════════════════════════════════════════
+
+ema20 = ta.ema(close, 20)
+ema50 = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+rsi = ta.rsi(close, 14)
+[macd, signal, hist] = ta.macd(close, 12, 26, 9)
+mom = ta.mom(close, 10)
+vol_avg = ta.sma(volume, 20)
+vol_ratio = volume / vol_avg
+
+// Bollinger
+bb_basis = ta.sma(close, 20)
+bb_dev = 2.0 * ta.stdev(close, 20)
+bb_lower = bb_basis - bb_dev
+
+// Stochastic
+stoch_k = ta.stoch(close, high, low, 14)
+
+// ADX
+[di_plus, di_minus, adx] = ta.dmi(14, 14)
+
+// Higher TF trend (request 4H data if on lower TF)
+htf_ema = request.security(syminfo.tickerid, "240", ta.ema(close, 50), lookahead=barmerge.lookahead_off)
+htf_bullish = close > htf_ema
+
+// Plot EMAs
+plot(show_emas ? ema20 : na, "EMA20", color=color.new(color.yellow, 40), linewidth=1)
+plot(show_emas ? ema50 : na, "EMA50", color=color.new(color.orange, 40), linewidth=2)
+plot(show_emas ? ema200 : na, "EMA200", color=color.new(color.white, 40), linewidth=3)
+
+// ════════════════════════════════════════════════════════════════
+// 10 CONDITIONS
+// ════════════════════════════════════════════════════════════════
+
+// 1. Price above EMA20
+cond1 = close > ema20
+
+// 2. Price above EMA50
+cond2 = close > ema50
+
+// 3. Price above EMA200
+cond3 = close > ema200
+
+// 4. EMA Stack (20 > 50 > 200)
+cond4 = ema20 > ema50 and ema50 > ema200
+
+// 5. RSI healthy (30-60 range - room to grow)
+cond5 = rsi > 30 and rsi < 60
+
+// 6. MACD bullish
+cond6 = macd > signal
+
+// 7. Momentum positive
+cond7 = mom > 0
+
+// 8. Price near/below BB basis (good entry)
+cond8 = close <= bb_basis
+
+// 9. Stochastic not overbought
+cond9 = stoch_k < 70
+
+// 10. ADX trending + bullish
+cond10 = adx > 20 and di_plus > di_minus
+
+// Calculate score
+score = (cond1 ? 1 : 0) + (cond2 ? 1 : 0) + (cond3 ? 1 : 0) + (cond4 ? 1 : 0) + (cond5 ? 1 : 0) + 
+        (cond6 ? 1 : 0) + (cond7 ? 1 : 0) + (cond8 ? 1 : 0) + (cond9 ? 1 : 0) + (cond10 ? 1 : 0)
+
+// Extra confirmations
+bullish_candle = close > open and (close - open) > (high - low) * 0.3
+ema_stacked = ema20 > ema50 and ema50 > ema200
+volume_spike = vol_ratio > 1.5
+htf_ok = not require_higher_tf or htf_bullish
+
+// ════════════════════════════════════════════════════════════════
+// ZIGZAG
+// ════════════════════════════════════════════════════════════════
+
+ph = ta.pivothigh(high, zz_depth, zz_depth)
+pl = ta.pivotlow(low, zz_depth, zz_depth)
+
+var float[] zzP = array.new_float(0)
+var int[] zzB = array.new_int(0)
+var int[] zzT = array.new_int(0)
+var int dir = 0
+var float lastP = 0.0
+
+if not na(ph)
+    pb = bar_index - zz_depth
+    if dir <= 0 and array.size(zzP) > 0 and dir == -1
+        if math.abs(ph - lastP) / lastP * 100 >= zz_dev
+            array.push(zzP, ph)
+            array.push(zzB, pb)
+            array.push(zzT, 1)
+            dir := 1
+            lastP := ph
+    else if dir <= 0 and array.size(zzP) == 0
+        array.push(zzP, ph)
+        array.push(zzB, pb)
+        array.push(zzT, 1)
+        dir := 1
+        lastP := ph
+    else if dir == 1 and ph > lastP and array.size(zzP) > 0
+        array.set(zzP, array.size(zzP) - 1, ph)
+        array.set(zzB, array.size(zzB) - 1, pb)
+        lastP := ph
+
+if not na(pl)
+    pb = bar_index - zz_depth
+    if dir >= 0 and array.size(zzP) > 0 and dir == 1
+        if math.abs(pl - lastP) / lastP * 100 >= zz_dev
+            array.push(zzP, pl)
+            array.push(zzB, pb)
+            array.push(zzT, -1)
+            dir := -1
+            lastP := pl
+    else if dir >= 0 and array.size(zzP) == 0
+        array.push(zzP, pl)
+        array.push(zzB, pb)
+        array.push(zzT, -1)
+        dir := -1
+        lastP := pl
+    else if dir == -1 and pl < lastP and array.size(zzP) > 0
+        array.set(zzP, array.size(zzP) - 1, pl)
+        array.set(zzB, array.size(zzB) - 1, pb)
+        lastP := pl
+
+getPt(i) =>
+    sz = array.size(zzP)
+    if i < sz
+        [array.get(zzP, sz-1-i), array.get(zzB, sz-1-i), array.get(zzT, sz-1-i)]
+    else
+        [0.0, 0, 0]
+
+// ════════════════════════════════════════════════════════════════
+// GOD MODE DETECTION
+// ════════════════════════════════════════════════════════════════
+
+detectGodMode() =>
+    [p0, b0, t0] = getPt(0)
+    [p1, b1, t1] = getPt(1)
+    [p2, b2, t2] = getPt(2)
+    
+    sig = false
+    entry = 0.0
+    tp = 0.0
+    sl = 0.0
+    rr = 0.0
+    
+    if p0 > 0 and p1 > 0 and p2 > 0
+        if t2 == -1 and t1 == 1 and t0 == -1
+            w1 = p1 - p2
+            w1pct = w1 / p2 * 100
+            
+            if w1 > 0 and w1pct >= min_wave
+                ret = (p1 - p0) / w1
+                
+                // Golden ratio zone only
+                if ret >= w2_min and ret <= w2_max
+                    entry := close  // Enter at current price, not pivot
+                    tp := entry + (w1 * tp_fib)
+                    sl := entry * (1 - sl_pct / 100)
+                    
+                    reward = tp - entry
+                    risk = entry - sl
+                    rr := risk > 0 ? reward / risk : 0
+                    
+                    // ALL GOD MODE CONDITIONS
+                    scoreOk = score >= min_score
+                    rrOk = rr >= min_rr
+                    candleOk = not require_bull_candle or bullish_candle
+                    stackOk = not require_ema_stack or ema_stacked
+                    htfOk = not require_higher_tf or htf_bullish
+                    volOk = not require_volume_spike or volume_spike
+                    
+                    if scoreOk and rrOk and candleOk and stackOk and htfOk and volOk
+                        sig := true
+    
+    [sig, entry, tp, sl, rr, b0]
+
+// ════════════════════════════════════════════════════════════════
+// TRACKING
+// ════════════════════════════════════════════════════════════════
+
+var int[] sigB = array.new_int(0)
+var float[] sigE = array.new_float(0)
+var float[] sigTP = array.new_float(0)
+var float[] sigSL = array.new_float(0)
+var int[] sigR = array.new_int(0)
+
+var int total = 0
+var int wins = 0
+var int losses = 0
+var int lastSigBar = 0
+
+[ws, we, wtp, wsl, wrr, wb] = detectGodMode()
+
+var int lastWb = 0
+if ws and wb != lastWb and (bar_index - lastSigBar) >= min_bars
+    lastWb := wb
+    lastSigBar := bar_index
+    array.push(sigB, bar_index)
+    array.push(sigE, we)
+    array.push(sigTP, wtp)
+    array.push(sigSL, wsl)
+    array.push(sigR, 0)
+    total += 1
+    
+    lbl = "🔥 GOD\n" + str.tostring(score) + "/10\nR:R " + str.tostring(wrr, "#.#")
+    label.new(bar_index, low, lbl, style=label.style_label_up, color=color.new(#ff6600, 0), textcolor=color.white, size=size.normal)
+    line.new(bar_index, wtp, bar_index + 20, wtp, color=color.new(#00ff88, 20), width=3)
+    line.new(bar_index, wsl, bar_index + 20, wsl, color=color.new(#ff4444, 20), width=3)
+    line.new(bar_index, we, bar_index + 20, we, color=color.new(color.white, 50), width=1, style=line.style_dotted)
+
+// Backtest
+if array.size(sigR) > 0
+    for i = 0 to array.size(sigR) - 1
+        if array.get(sigR, i) == 0
+            if high >= array.get(sigTP, i)
+                array.set(sigR, i, 1)
+                wins += 1
+            else if low <= array.get(sigSL, i)
+                array.set(sigR, i, -1)
+                losses += 1
+
+// ════════════════════════════════════════════════════════════════
+// DRAW ZIGZAG
+// ════════════════════════════════════════════════════════════════
+
+if show_zz and array.size(zzP) >= 2 and barstate.islast
+    for i = 0 to math.min(array.size(zzP) - 2, 12)
+        idx = array.size(zzP) - 1 - i
+        if idx > 0 and bar_index - array.get(zzB, idx-1) < 500
+            col = array.get(zzT, idx) == 1 ? #00ff88 : #ff4444
+            line.new(array.get(zzB, idx-1), array.get(zzP, idx-1), array.get(zzB, idx), array.get(zzP, idx), color=col, width=4)
+
+// ════════════════════════════════════════════════════════════════
+// CONDITIONS TABLE
+// ════════════════════════════════════════════════════════════════
+
+if show_cond
+    var table ct = table.new(position.bottom_right, 3, 14, bgcolor=color.new(#0d1117, 5), border_width=1)
+    
+    table.cell(ct, 0, 0, "🔥 GOD MODE", text_color=#ff6600, bgcolor=color.new(#ff6600, 80), text_size=size.small)
+    table.cell(ct, 1, 0, str.tostring(score) + "/10", text_color=score >= min_score ? #00ff88 : #ff4444, bgcolor=color.new(#ff6600, 80), text_size=size.small)
+    table.cell(ct, 2, 0, score >= min_score ? "✅" : "❌", bgcolor=color.new(#ff6600, 80), text_size=size.small)
+    
+    table.cell(ct, 0, 1, "EMA20", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 1, cond1 ? "✅" : "❌", text_color=cond1 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 2, "EMA50", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 2, cond2 ? "✅" : "❌", text_color=cond2 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 3, "EMA200", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 3, cond3 ? "✅" : "❌", text_color=cond3 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 4, "EMA Stack", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 4, cond4 ? "✅" : "❌", text_color=cond4 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 5, "RSI 30-60", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 5, cond5 ? "✅" : "❌", text_color=cond5 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 6, "MACD", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 6, cond6 ? "✅" : "❌", text_color=cond6 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 7, "Momentum", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 7, cond7 ? "✅" : "❌", text_color=cond7 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 8, "Bollinger", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 8, cond8 ? "✅" : "❌", text_color=cond8 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 9, "Stochastic", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 9, cond9 ? "✅" : "❌", text_color=cond9 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 10, "ADX", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 10, cond10 ? "✅" : "❌", text_color=cond10 ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 11, "─────", text_color=color.gray, text_size=size.tiny)
+    table.cell(ct, 1, 11, "─────", text_color=color.gray, text_size=size.tiny)
+    
+    table.cell(ct, 0, 12, "Bull Candle", text_color=color.white, text_size=size.tiny)
+    table.cell(ct, 1, 12, bullish_candle ? "✅" : "❌", text_color=bullish_candle ? #00ff88 : #ff4444, text_size=size.tiny)
+    
+    table.cell(ct, 0, 13, "HTF Trend", text_color=color.white, text_size=size.tiny)
+    table.cell(ct, 1, 13, htf_bullish ? "✅" : "❌", text_color=htf_bullish ? #00ff88 : #ff4444, text_size=size.tiny)
+
+// ════════════════════════════════════════════════════════════════
+// STATS TABLE
+// ════════════════════════════════════════════════════════════════
+
+if show_stats
+    var table tbl = table.new(position.top_right, 2, 6, bgcolor=color.new(#0d1117, 5), border_width=2, border_color=#ff6600)
+    
+    closed = wins + losses
+    rate = closed > 0 ? (wins * 100.0 / closed) : 0.0
+    rateCol = rate >= 85 ? #00ff88 : rate >= 70 ? #ffff00 : rate >= 50 ? #ffaa00 : #ff4444
+    
+    table.cell(tbl, 0, 0, "🔥 GOD MODE", text_color=#ff6600, bgcolor=color.new(#ff6600, 70), text_size=size.normal)
+    table.cell(tbl, 1, 0, timeframe.period, text_color=color.yellow, bgcolor=color.new(#ff6600, 70), text_size=size.normal)
+    
+    table.cell(tbl, 0, 1, "Signals", text_color=color.white, text_size=size.small)
+    table.cell(tbl, 1, 1, str.tostring(total), text_color=color.white, text_size=size.small)
+    
+    table.cell(tbl, 0, 2, "✅ Wins", text_color=#00ff88, text_size=size.small)
+    table.cell(tbl, 1, 2, str.tostring(wins), text_color=#00ff88, text_size=size.small)
+    
+    table.cell(tbl, 0, 3, "❌ Losses", text_color=#ff4444, text_size=size.small)
+    table.cell(tbl, 1, 3, str.tostring(losses), text_color=#ff4444, text_size=size.small)
+    
+    table.cell(tbl, 0, 4, "⏳ Open", text_color=color.orange, text_size=size.small)
+    table.cell(tbl, 1, 4, str.tostring(total - closed), text_color=color.orange, text_size=size.small)
+    
+    table.cell(tbl, 0, 5, "🏆 WIN RATE", text_color=color.white, bgcolor=color.new(rateCol, 60), text_size=size.normal)
+    table.cell(tbl, 1, 5, str.tostring(rate, "#.#") + "%", text_color=rateCol, bgcolor=color.new(rateCol, 60), text_size=size.large)
+
+// ════════════════════════════════════════════════════════════════
+// ALERTS
+// ════════════════════════════════════════════════════════════════
+
+alertcondition(ws, "GOD MODE Signal", "🔥 GOD MODE: Perfect Setup Detected!")
