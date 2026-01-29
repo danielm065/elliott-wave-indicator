@@ -1,18 +1,27 @@
 //@version=6
-indicator("Elliott + ICT v7", overlay=true, max_labels_count=500, max_lines_count=500)
+indicator("Elliott + ICT v10 BALANCED", overlay=true, max_labels_count=500, max_lines_count=500)
 
 // ════════════════════════════════════════════════════════════════
-// 🔥 ELLIOTT WAVE + ICT HYBRID
-// Smart Money Concepts meets Wave Theory
+// 🎯 VERSION 10 - BALANCED MODE
+// Focus: Balance between signal quality and quantity
 // ════════════════════════════════════════════════════════════════
 
 // ═══ INPUTS ═══
 grp_main = "🎯 MAIN SETTINGS"
-min_confluence = input.int(8, "Min Confluence Score", minval=3, maxval=10, group=grp_main)
+min_strength = input.int(5, "Min Strength Score", minval=0, maxval=20, group=grp_main)
 show_signals = input.bool(true, "Show Signals", group=grp_main)
 
+grp_trigger = "⚡ TRIGGER CONDITIONS"
+use_discount_trigger = input.bool(true, "Require Discount Zone", group=grp_trigger)
+use_cisd_trigger = input.bool(true, "Use CISD", group=grp_trigger)
+use_fvg_trigger = input.bool(true, "Use FVG Fill", group=grp_trigger)
+
+grp_smt = "🔀 SMT SETTINGS"
+smt_symbol = input.symbol("CME_MINI:ES1!", "Compare Symbol", group=grp_smt)
+smt_lookback = input.int(10, "SMT Lookback", minval=5, maxval=50, group=grp_smt)
+
 grp_time = "⏰ KILL ZONES (NY Time)"
-use_killzones = input.bool(true, "Only Trade Kill Zones", group=grp_time)
+use_killzones = input.bool(false, "Only Trade Kill Zones", group=grp_time)
 london_start = input.int(2, "London Start", group=grp_time)
 london_end = input.int(5, "London End", group=grp_time)
 ny_start = input.int(7, "NY Start", group=grp_time)
@@ -36,9 +45,6 @@ sl_pct = input.float(2.0, "Stop Loss %", group=grp_tp)
 
 grp_vis = "👁 VISUALS"
 show_zigzag = input.bool(true, "Show Zigzag", group=grp_vis)
-show_ob = input.bool(true, "Show Order Blocks", group=grp_vis)
-show_fvg = input.bool(true, "Show FVG", group=grp_vis)
-show_zones = input.bool(true, "Show Premium/Discount", group=grp_vis)
 show_stats = input.bool(true, "Show Stats Table", group=grp_vis)
 show_confluence = input.bool(true, "Show Confluence Panel", group=grp_vis)
 
@@ -46,22 +52,49 @@ show_confluence = input.bool(true, "Show Confluence Panel", group=grp_vis)
 // ⏰ KILL ZONE DETECTION
 // ════════════════════════════════════════════════════════════════
 
-// Convert to NY timezone (approximate using UTC-5)
 utc_hour = hour(time, "UTC")
 ny_hour = (utc_hour - 5 + 24) % 24
 
 in_london_kz = ny_hour >= london_start and ny_hour < london_end
 in_ny_kz = ny_hour >= ny_start and ny_hour < ny_end
-in_any_kz = in_london_kz or in_ny_kz
+kz_ok = not use_killzones or in_london_kz or in_ny_kz
 
-kz_ok = not use_killzones or in_any_kz
-
-// Background color for Kill Zones
 bgcolor(in_london_kz ? color.new(color.blue, 95) : na, title="London KZ")
 bgcolor(in_ny_kz ? color.new(color.orange, 95) : na, title="NY KZ")
 
 // ════════════════════════════════════════════════════════════════
-// 🌊 ZIGZAG (Elliott Wave Structure)
+// 🔀 SMT - SMART MONEY TECHNIQUE
+// ════════════════════════════════════════════════════════════════
+
+[smt_open, smt_high, smt_low, smt_close] = request.security(smt_symbol, timeframe.period, [open, high, low, close])
+
+main_ph = ta.pivothigh(high, smt_lookback, smt_lookback)
+main_pl = ta.pivotlow(low, smt_lookback, smt_lookback)
+comp_ph = ta.pivothigh(smt_high, smt_lookback, smt_lookback)
+comp_pl = ta.pivotlow(smt_low, smt_lookback, smt_lookback)
+
+var float main_last_high = na, var float main_prev_high = na
+var float main_last_low = na, var float main_prev_low = na
+var float comp_last_high = na, var float comp_prev_high = na
+var float comp_last_low = na, var float comp_prev_low = na
+
+if not na(main_ph)
+    main_prev_high := main_last_high
+    main_last_high := main_ph
+if not na(main_pl)
+    main_prev_low := main_last_low
+    main_last_low := main_pl
+if not na(comp_ph)
+    comp_prev_high := comp_last_high
+    comp_last_high := comp_ph
+if not na(comp_pl)
+    comp_prev_low := comp_last_low
+    comp_last_low := comp_pl
+
+smt_bullish = not na(main_last_low) and not na(main_prev_low) and not na(comp_last_low) and not na(comp_prev_low) and main_last_low < main_prev_low and comp_last_low > comp_prev_low
+
+// ════════════════════════════════════════════════════════════════
+// 🌊 ZIGZAG
 // ════════════════════════════════════════════════════════════════
 
 ph = ta.pivothigh(high, zz_depth, zz_depth)
@@ -75,19 +108,13 @@ var float lastP = 0.0
 
 if not na(ph)
     pb = bar_index - zz_depth
-    if dir <= 0 and array.size(zzP) > 0 and dir == -1
+    if dir == -1 and array.size(zzP) > 0
         if math.abs(ph - lastP) / lastP * 100 >= zz_dev
-            array.push(zzP, ph)
-            array.push(zzB, pb)
-            array.push(zzT, 1)
-            dir := 1
-            lastP := ph
-    else if dir <= 0 and array.size(zzP) == 0
-        array.push(zzP, ph)
-        array.push(zzB, pb)
-        array.push(zzT, 1)
-        dir := 1
-        lastP := ph
+            array.push(zzP, ph), array.push(zzB, pb), array.push(zzT, 1)
+            dir := 1, lastP := ph
+    else if array.size(zzP) == 0
+        array.push(zzP, ph), array.push(zzB, pb), array.push(zzT, 1)
+        dir := 1, lastP := ph
     else if dir == 1 and ph > lastP and array.size(zzP) > 0
         array.set(zzP, array.size(zzP) - 1, ph)
         array.set(zzB, array.size(zzB) - 1, pb)
@@ -95,19 +122,13 @@ if not na(ph)
 
 if not na(pl)
     pb = bar_index - zz_depth
-    if dir >= 0 and array.size(zzP) > 0 and dir == 1
+    if dir == 1 and array.size(zzP) > 0
         if math.abs(pl - lastP) / lastP * 100 >= zz_dev
-            array.push(zzP, pl)
-            array.push(zzB, pb)
-            array.push(zzT, -1)
-            dir := -1
-            lastP := pl
-    else if dir >= 0 and array.size(zzP) == 0
-        array.push(zzP, pl)
-        array.push(zzB, pb)
-        array.push(zzT, -1)
-        dir := -1
-        lastP := pl
+            array.push(zzP, pl), array.push(zzB, pb), array.push(zzT, -1)
+            dir := -1, lastP := pl
+    else if array.size(zzP) == 0
+        array.push(zzP, pl), array.push(zzB, pb), array.push(zzT, -1)
+        dir := -1, lastP := pl
     else if dir == -1 and pl < lastP and array.size(zzP) > 0
         array.set(zzP, array.size(zzP) - 1, pl)
         array.set(zzB, array.size(zzB) - 1, pb)
@@ -120,18 +141,16 @@ getPt(i) =>
     else
         [0.0, 0, 0]
 
-// ════════════════════════════════════════════════════════════════
-// 📊 PREMIUM / DISCOUNT / OTE ZONES
-// ════════════════════════════════════════════════════════════════
-
 [p0, b0, t0] = getPt(0)
 [p1, b1, t1] = getPt(1)
 [p2, b2, t2] = getPt(2)
 
-var float swing_high = na
-var float swing_low = na
-var float equilibrium = na
-var float ote_price = na
+// ════════════════════════════════════════════════════════════════
+// 📊 PREMIUM / DISCOUNT / OTE
+// ════════════════════════════════════════════════════════════════
+
+var float swing_high = na, var float swing_low = na
+var float equilibrium = na, var float ote_price = na
 
 if array.size(zzP) >= 2
     recent_high = math.max(p0, p1)
@@ -140,216 +159,172 @@ if array.size(zzP) >= 2
         swing_high := recent_high
         swing_low := recent_low
         equilibrium := (swing_high + swing_low) / 2
-        range_size = swing_high - swing_low
-        ote_price := swing_high - (range_size * ote_level / 100)
+        ote_price := swing_high - ((swing_high - swing_low) * ote_level / 100)
 
 in_discount = not na(equilibrium) and close < equilibrium
-in_premium = not na(equilibrium) and close > equilibrium
 in_ote_zone = not na(ote_price) and close <= ote_price and close >= swing_low
 
-// Plot zones
-plot(show_zones and not na(equilibrium) ? equilibrium : na, "Equilibrium", color=color.gray, style=plot.style_linebr, linewidth=2)
-plot(show_zones and not na(ote_price) ? ote_price : na, "OTE Level", color=color.new(#ff6600, 50), style=plot.style_linebr, linewidth=1)
+plot(not na(equilibrium) ? equilibrium : na, "EQ", color=color.gray, style=plot.style_linebr, linewidth=2)
 
 // ════════════════════════════════════════════════════════════════
-// 📦 ORDER BLOCK DETECTION
+// 📦 ORDER BLOCK
 // ════════════════════════════════════════════════════════════════
 
-var float bull_ob_top = na
-var float bull_ob_bot = na
-var int bull_ob_bar = na
+var float bull_ob_top = na, var float bull_ob_bot = na
 
-// Bullish Order Block: Last down candle before big up move
 bull_ob_found = false
 for i = 1 to ob_lookback
-    if close[i] < open[i] and close[i-1] > open[i-1]  // Down candle followed by up
-        move_size = (close[i-1] - close[i]) / close[i] * 100
-        if move_size > 0.5  // Significant move
-            bull_ob_top := high[i]
-            bull_ob_bot := low[i]
-            bull_ob_bar := bar_index - i
+    if close[i] < open[i] and close[i-1] > open[i-1]
+        if (close[i-1] - close[i]) / close[i] * 100 > 0.5
+            bull_ob_top := high[i], bull_ob_bot := low[i]
             bull_ob_found := true
             break
 
 in_bull_ob = not na(bull_ob_bot) and close >= bull_ob_bot and close <= bull_ob_top
 
-// Draw Order Block
-if show_ob and bull_ob_found and barstate.islast
-    box.new(bull_ob_bar, bull_ob_top, bar_index + 5, bull_ob_bot, 
-            bgcolor=color.new(color.green, 85), border_color=color.green, border_width=1)
-
 // ════════════════════════════════════════════════════════════════
-// 📊 FAIR VALUE GAP (FVG) DETECTION
+// 📊 FVG
 // ════════════════════════════════════════════════════════════════
 
-// Bullish FVG: Gap between candle 1 high and candle 3 low
 bull_fvg = low[0] > high[2]
-bull_fvg_size = bull_fvg ? (low[0] - high[2]) / close * 100 : 0
-bull_fvg_valid = bull_fvg and bull_fvg_size >= fvg_min_size
+bull_fvg_valid = bull_fvg and (low[0] - high[2]) / close * 100 >= fvg_min_size
 
-var float fvg_top = na
-var float fvg_bot = na
-var int fvg_bar = na
+var float[] fvg_tops = array.new_float(0)
+var float[] fvg_bots = array.new_float(0)
 
 if bull_fvg_valid
-    fvg_top := low[0]
-    fvg_bot := high[2]
-    fvg_bar := bar_index - 1
+    array.push(fvg_tops, low[0]), array.push(fvg_bots, high[2])
+    if array.size(fvg_tops) > 10
+        array.shift(fvg_tops), array.shift(fvg_bots)
 
-in_fvg = not na(fvg_bot) and close >= fvg_bot and close <= fvg_top
-
-// Draw FVG
-if show_fvg and bull_fvg_valid
-    box.new(bar_index - 2, low[0], bar_index, high[2], 
-            bgcolor=color.new(color.blue, 85), border_color=color.blue, border_width=1)
+fvg_being_filled = false
+if array.size(fvg_tops) > 0
+    for i = 0 to array.size(fvg_tops) - 1
+        if close <= array.get(fvg_tops, i) and close >= array.get(fvg_bots, i)
+            fvg_being_filled := true
+            break
 
 // ════════════════════════════════════════════════════════════════
-// 💥 DISPLACEMENT DETECTION
+// 💥 DISPLACEMENT
 // ════════════════════════════════════════════════════════════════
 
 atr = ta.atr(14)
-candle_size = math.abs(close - open)
-displacement = candle_size > atr * displacement_mult
+displacement = math.abs(close - open) > atr * displacement_mult
 
 // ════════════════════════════════════════════════════════════════
-// 💧 LIQUIDITY SWEEP DETECTION
+// 💧 LIQUIDITY SWEEP + CISD
 // ════════════════════════════════════════════════════════════════
 
-// Check if price swept below recent low then reversed
 recent_low_val = ta.lowest(low, 10)[1]
 swept_low = low < recent_low_val and close > recent_low_val
 
+var float manip_high = na, var int manip_bar = na
+var bool waiting_for_cisd = false
+
+if swept_low and not waiting_for_cisd
+    manip_h = high
+    for i = 1 to 5
+        if close[i] < open[i]
+            manip_h := math.max(manip_h, high[i])
+        else
+            break
+    manip_high := manip_h
+    manip_bar := bar_index
+    waiting_for_cisd := true
+
+cisd_bullish = false
+if waiting_for_cisd and not na(manip_high)
+    if close > open and close > manip_high
+        cisd_bullish := true
+        waiting_for_cisd := false
+    if bar_index - manip_bar > 10
+        waiting_for_cisd := false
+
 // ════════════════════════════════════════════════════════════════
-// 🌊 ELLIOTT WAVE 2 DETECTION
+// 🌊 ELLIOTT WAVE 2
 // ════════════════════════════════════════════════════════════════
 
 wave2_setup = false
 wave1_size = 0.0
 
 if p0 > 0 and p1 > 0 and p2 > 0
-    if t2 == -1 and t1 == 1 and t0 == -1  // Low-High-Low pattern
+    if t2 == -1 and t1 == 1 and t0 == -1
         wave1_size := p1 - p2
         if wave1_size > 0
             retrace = (p1 - p0) / wave1_size
             wave2_setup := retrace >= wave_retrace_min and retrace <= wave_retrace_max
 
 // ════════════════════════════════════════════════════════════════
-// 🎯 CONFLUENCE SCORING
+// 🎯 SCORING
 // ════════════════════════════════════════════════════════════════
 
 score_kz = kz_ok ? 1 : 0
-score_discount = in_discount ? 1 : 0
-score_ote = in_ote_zone ? 2 : 0  // Double weight for OTE
-score_ob = in_bull_ob ? 1 : 0
-score_fvg = in_fvg ? 1 : 0
-score_displacement = displacement[1] or displacement[2] ? 1 : 0  // Recent displacement
+score_discount = in_discount ? 2 : 0
+score_ote = in_ote_zone ? 3 : 0
+score_ob = in_bull_ob ? 2 : 0
+score_fvg = fvg_being_filled ? 2 : 0
+score_displacement = displacement[1] or displacement[2] ? 1 : 0
 score_sweep = swept_low ? 1 : 0
-score_wave2 = wave2_setup ? 2 : 0  // Double weight for Elliott
+score_wave2 = wave2_setup ? 2 : 0
+score_smt = smt_bullish ? 3 : 0
+score_cisd = cisd_bullish ? 3 : 0
 
-total_score = score_kz + score_discount + score_ote + score_ob + score_fvg + score_displacement + score_sweep + score_wave2
+strength_score = score_kz + score_discount + score_ote + score_ob + score_fvg + score_displacement + score_sweep + score_wave2 + score_smt + score_cisd
 
 // ════════════════════════════════════════════════════════════════
-// 🚀 SIGNAL GENERATION
+// 🚀 SIGNAL
 // ════════════════════════════════════════════════════════════════
 
-bull_signal = total_score >= min_confluence and close > open  // Bullish candle confirmation
+// Trigger: Discount zone required, plus at least one of: CISD or FVG fill
+trigger_cisd = use_cisd_trigger and cisd_bullish
+trigger_fvg = use_fvg_trigger and fvg_being_filled
+has_trigger = trigger_cisd or trigger_fvg or (in_discount and strength_score >= 8)
 
+bull_signal = use_discount_trigger and in_discount and has_trigger and close > open and strength_score >= min_strength and kz_ok
+
+var int total = 0, var int wins = 0, var int losses = 0, var int lastSigBar = 0
 var int[] sigB = array.new_int(0)
 var float[] sigE = array.new_float(0)
 var float[] sigTP = array.new_float(0)
 var float[] sigSL = array.new_float(0)
 var int[] sigR = array.new_int(0)
 
-var int total = 0
-var int wins = 0
-var int losses = 0
-var int lastSigBar = 0
+var bool show_signal = false
+show_signal := false
 
 if bull_signal and (bar_index - lastSigBar) > 10 and show_signals
     lastSigBar := bar_index
-    
     entry = close
     tp = entry + (wave1_size > 0 ? wave1_size * tp_fib : entry * tp_fib / 100)
     sl = entry * (1 - sl_pct / 100)
-    
-    array.push(sigB, bar_index)
-    array.push(sigE, entry)
-    array.push(sigTP, tp)
-    array.push(sigSL, sl)
-    array.push(sigR, 0)
+    array.push(sigB, bar_index), array.push(sigE, entry)
+    array.push(sigTP, tp), array.push(sigSL, sl), array.push(sigR, 0)
     total += 1
-    
-    // Signal label with score
-    kz_txt = in_london_kz ? "🇬🇧" : in_ny_kz ? "🇺🇸" : ""
-    lbl = "🎯 BUY " + kz_txt + "\n" + str.tostring(total_score) + " pts"
-    col = total_score >= 7 ? color.new(#00ff88, 0) : total_score >= 5 ? color.new(#ffcc00, 0) : color.new(#ff6600, 0)
-    label.new(bar_index, low, lbl, style=label.style_label_up, color=col, textcolor=color.white, size=size.normal)
-    
-    // TP/SL lines
-    line.new(bar_index, tp, bar_index + 20, tp, color=color.new(#00ff88, 30), width=2, style=line.style_dashed)
-    line.new(bar_index, sl, bar_index + 20, sl, color=color.new(#ff4444, 30), width=2, style=line.style_dashed)
+    show_signal := true
 
 // Backtest
 if array.size(sigR) > 0
     for i = 0 to array.size(sigR) - 1
         if array.get(sigR, i) == 0
             if high >= array.get(sigTP, i)
-                array.set(sigR, i, 1)
-                wins += 1
+                array.set(sigR, i, 1), wins += 1
             else if low <= array.get(sigSL, i)
-                array.set(sigR, i, -1)
-                losses += 1
+                array.set(sigR, i, -1), losses += 1
 
-// ════════════════════════════════════════════════════════════════
-// 🔀 DRAW ZIGZAG
-// ════════════════════════════════════════════════════════════════
+// Plot
+plotshape(show_signal and strength_score >= 10, "BUY Strong", shape.labelup, location.belowbar, color.new(#00ff88, 0), text="🔥", textcolor=color.white, size=size.normal)
+plotshape(show_signal and strength_score >= 5 and strength_score < 10, "BUY Medium", shape.labelup, location.belowbar, color.new(#ffcc00, 0), text="⚡", textcolor=color.white, size=size.normal)
+plotshape(show_signal and strength_score < 5, "BUY Weak", shape.labelup, location.belowbar, color.new(#ff6600, 0), text="💰", textcolor=color.white, size=size.small)
 
+// Zigzag
 if show_zigzag and array.size(zzP) >= 2 and barstate.islast
     for i = 0 to math.min(array.size(zzP) - 2, 15)
         idx = array.size(zzP) - 1 - i
         if idx > 0 and bar_index - array.get(zzB, idx-1) < 500
-            col = array.get(zzT, idx) == 1 ? #00ff88 : #ff4444
-            line.new(array.get(zzB, idx-1), array.get(zzP, idx-1), array.get(zzB, idx), array.get(zzP, idx), color=col, width=3)
+            line.new(array.get(zzB, idx-1), array.get(zzP, idx-1), array.get(zzB, idx), array.get(zzP, idx), color=array.get(zzT, idx) == 1 ? #00ff88 : #ff4444, width=3)
 
 // ════════════════════════════════════════════════════════════════
-// 📊 CONFLUENCE PANEL
-// ════════════════════════════════════════════════════════════════
-
-if show_confluence
-    var table cpanel = table.new(position.bottom_right, 2, 10, bgcolor=color.new(#0d1117, 10), border_width=1)
-    
-    table.cell(cpanel, 0, 0, "🎯 CONFLUENCE", text_color=#00ccff, bgcolor=color.new(#0066cc, 50), text_size=size.small)
-    table.cell(cpanel, 1, 0, str.tostring(total_score) + " pts", text_color=total_score >= min_confluence ? #00ff88 : #ff6666, bgcolor=color.new(#0066cc, 50), text_size=size.small)
-    
-    table.cell(cpanel, 0, 1, "Kill Zone", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 1, kz_ok ? "✅" : "❌", text_size=size.tiny)
-    
-    table.cell(cpanel, 0, 2, "Discount", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 2, in_discount ? "✅" : "❌", text_size=size.tiny)
-    
-    table.cell(cpanel, 0, 3, "OTE Zone", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 3, in_ote_zone ? "✅✅" : "❌", text_size=size.tiny)
-    
-    table.cell(cpanel, 0, 4, "Order Block", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 4, in_bull_ob ? "✅" : "❌", text_size=size.tiny)
-    
-    table.cell(cpanel, 0, 5, "FVG", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 5, in_fvg ? "✅" : "❌", text_size=size.tiny)
-    
-    table.cell(cpanel, 0, 6, "Displacement", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 6, displacement[1] or displacement[2] ? "✅" : "❌", text_size=size.tiny)
-    
-    table.cell(cpanel, 0, 7, "Liquidity Sweep", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 7, swept_low ? "✅" : "❌", text_size=size.tiny)
-    
-    table.cell(cpanel, 0, 8, "Wave 2 Setup", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 8, wave2_setup ? "✅✅" : "❌", text_size=size.tiny)
-    
-    table.cell(cpanel, 0, 9, "Min Required", text_color=color.white, text_size=size.tiny)
-    table.cell(cpanel, 1, 9, str.tostring(min_confluence), text_color=color.yellow, text_size=size.tiny)
-
-// ════════════════════════════════════════════════════════════════
-// 📈 STATS TABLE
+// 📊 STATS
 // ════════════════════════════════════════════════════════════════
 
 if show_stats
@@ -357,28 +332,39 @@ if show_stats
     
     closed = wins + losses
     rate = closed > 0 ? (wins * 100.0 / closed) : 0.0
-    rateCol = rate >= 75 ? #00ff88 : rate >= 60 ? #ffcc00 : #ff4444
+    rateCol = rate >= 85 ? #00ff88 : rate >= 70 ? #ffcc00 : rate >= 50 ? #ff9900 : #ff4444
     
-    table.cell(stats, 0, 0, "🌊 ELLIOTT+ICT", text_color=#00ccff, bgcolor=color.new(#0066cc, 50), text_size=size.normal)
+    table.cell(stats, 0, 0, "🎯 v10 BAL", text_color=#00ccff, bgcolor=color.new(#0066cc, 50), text_size=size.normal)
     table.cell(stats, 1, 0, timeframe.period, text_color=color.yellow, bgcolor=color.new(#0066cc, 50), text_size=size.normal)
-    
     table.cell(stats, 0, 1, "Signals", text_color=color.white, text_size=size.small)
     table.cell(stats, 1, 1, str.tostring(total), text_color=color.white, text_size=size.small)
-    
     table.cell(stats, 0, 2, "✅ Wins", text_color=#00ff88, text_size=size.small)
     table.cell(stats, 1, 2, str.tostring(wins), text_color=#00ff88, text_size=size.small)
-    
     table.cell(stats, 0, 3, "❌ Losses", text_color=#ff4444, text_size=size.small)
     table.cell(stats, 1, 3, str.tostring(losses), text_color=#ff4444, text_size=size.small)
-    
     table.cell(stats, 0, 4, "⏳ Open", text_color=color.orange, text_size=size.small)
     table.cell(stats, 1, 4, str.tostring(total - closed), text_color=color.orange, text_size=size.small)
-    
     table.cell(stats, 0, 5, "🏆 WIN RATE", text_color=color.white, bgcolor=color.new(rateCol, 60), text_size=size.normal)
     table.cell(stats, 1, 5, str.tostring(rate, "#.#") + "%", text_color=rateCol, bgcolor=color.new(rateCol, 60), text_size=size.large)
 
-// ════════════════════════════════════════════════════════════════
-// 🔔 ALERTS
-// ════════════════════════════════════════════════════════════════
+// Panel
+if show_confluence
+    var table cpanel = table.new(position.bottom_right, 2, 8, bgcolor=color.new(#0d1117, 10), border_width=1)
+    table.cell(cpanel, 0, 0, "🎯 SIGNAL", text_color=#00ccff, bgcolor=color.new(#0066cc, 50), text_size=size.small)
+    table.cell(cpanel, 1, 0, in_discount and has_trigger ? "✅ READY" : "❌ WAIT", text_color=in_discount and has_trigger ? #00ff88 : #ff6666, bgcolor=color.new(#0066cc, 50), text_size=size.small)
+    table.cell(cpanel, 0, 1, "💰 Discount", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 1, in_discount ? "✅" : "—", text_color=in_discount ? #00ff88 : color.gray, text_size=size.tiny)
+    table.cell(cpanel, 0, 2, "🔄 CISD", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 2, cisd_bullish ? "✅" : "—", text_color=cisd_bullish ? #00ff88 : color.gray, text_size=size.tiny)
+    table.cell(cpanel, 0, 3, "📊 FVG", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 3, fvg_being_filled ? "✅" : "—", text_color=fvg_being_filled ? #00ff88 : color.gray, text_size=size.tiny)
+    table.cell(cpanel, 0, 4, "🔀 SMT", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 4, smt_bullish ? "✅" : "—", text_color=smt_bullish ? #00ff88 : color.gray, text_size=size.tiny)
+    table.cell(cpanel, 0, 5, "🎯 OTE", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 5, in_ote_zone ? "✅" : "—", text_color=in_ote_zone ? #00ff88 : color.gray, text_size=size.tiny)
+    table.cell(cpanel, 0, 6, "📦 OB", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 6, in_bull_ob ? "✅" : "—", text_color=in_bull_ob ? #00ff88 : color.gray, text_size=size.tiny)
+    table.cell(cpanel, 0, 7, "💪 Score", text_color=color.white, text_size=size.tiny)
+    table.cell(cpanel, 1, 7, str.tostring(strength_score) + "/20", text_color=strength_score >= min_strength ? #00ff88 : #ff6666, text_size=size.tiny)
 
-alertcondition(bull_signal, "Elliott+ICT BUY", "🎯 Elliott+ICT: High Confluence BUY Signal!")
+alertcondition(bull_signal, "v10 BUY", "🎯 v10 BALANCED: BUY Signal!")

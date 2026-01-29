@@ -8,7 +8,7 @@ indicator("Elliott + ICT v7", overlay=true, max_labels_count=500, max_lines_coun
 
 // ═══ INPUTS ═══
 grp_main = "🎯 MAIN SETTINGS"
-min_confluence = input.int(5, "Min Confluence Score", minval=3, maxval=10, group=grp_main)
+min_strength = input.int(0, "Min Strength Score (0=all)", minval=0, maxval=9, group=grp_main, tooltip="0 = show all signals in Discount zone. Higher = filter weak setups")
 show_signals = input.bool(true, "Show Signals", group=grp_main)
 
 grp_time = "⏰ KILL ZONES (NY Time)"
@@ -237,8 +237,9 @@ if p0 > 0 and p1 > 0 and p2 > 0
 // 🎯 CONFLUENCE SCORING
 // ════════════════════════════════════════════════════════════════
 
+// Discount is the TRIGGER - required for any signal
+// Other factors are STRENGTH multipliers
 score_kz = kz_ok ? 1 : 0
-score_discount = in_discount ? 1 : 0
 score_ote = in_ote_zone ? 2 : 0  // Double weight for OTE
 score_ob = in_bull_ob ? 1 : 0
 score_fvg = in_fvg ? 1 : 0
@@ -246,13 +247,18 @@ score_displacement = displacement[1] or displacement[2] ? 1 : 0  // Recent displ
 score_sweep = swept_low ? 1 : 0
 score_wave2 = wave2_setup ? 2 : 0  // Double weight for Elliott
 
-total_score = score_kz + score_discount + score_ote + score_ob + score_fvg + score_displacement + score_sweep + score_wave2
+// Strength score (without discount - that's the trigger)
+strength_score = score_kz + score_ote + score_ob + score_fvg + score_displacement + score_sweep + score_wave2
+// Max strength = 9
 
 // ════════════════════════════════════════════════════════════════
 // 🚀 SIGNAL GENERATION
 // ════════════════════════════════════════════════════════════════
 
-bull_signal = total_score >= min_confluence and close > open  // Bullish candle confirmation
+// Signal triggers when price enters DISCOUNT zone + bullish candle
+// Strength score shows how strong the setup is (0-9)
+// Optional: filter by min_strength (0 = show all)
+bull_signal = in_discount and close > open and strength_score >= min_strength
 
 var int[] sigB = array.new_int(0)
 var float[] sigE = array.new_float(0)
@@ -279,10 +285,10 @@ if bull_signal and (bar_index - lastSigBar) > 10 and show_signals
     array.push(sigR, 0)
     total += 1
     
-    // Signal label with score
+    // Signal label with strength score
     kz_txt = in_london_kz ? "🇬🇧" : in_ny_kz ? "🇺🇸" : ""
-    lbl = "🎯 BUY " + kz_txt + "\n" + str.tostring(total_score) + " pts"
-    col = total_score >= 7 ? color.new(#00ff88, 0) : total_score >= 5 ? color.new(#ffcc00, 0) : color.new(#ff6600, 0)
+    lbl = "🎯 BUY " + kz_txt + "\n💪 " + str.tostring(strength_score) + "/9"
+    col = strength_score >= 6 ? color.new(#00ff88, 0) : strength_score >= 4 ? color.new(#ffcc00, 0) : color.new(#ff6600, 0)
     label.new(bar_index, low, lbl, style=label.style_label_up, color=col, textcolor=color.white, size=size.normal)
     
     // TP/SL lines
@@ -318,35 +324,35 @@ if show_zigzag and array.size(zzP) >= 2 and barstate.islast
 if show_confluence
     var table cpanel = table.new(position.bottom_right, 2, 10, bgcolor=color.new(#0d1117, 10), border_width=1)
     
-    table.cell(cpanel, 0, 0, "🎯 CONFLUENCE", text_color=#00ccff, bgcolor=color.new(#0066cc, 50), text_size=size.small)
-    table.cell(cpanel, 1, 0, str.tostring(total_score) + " pts", text_color=total_score >= min_confluence ? #00ff88 : #ff6666, bgcolor=color.new(#0066cc, 50), text_size=size.small)
+    table.cell(cpanel, 0, 0, "🎯 SIGNAL", text_color=#00ccff, bgcolor=color.new(#0066cc, 50), text_size=size.small)
+    table.cell(cpanel, 1, 0, in_discount ? "ACTIVE" : "WAIT", text_color=in_discount ? #00ff88 : #ff6666, bgcolor=color.new(#0066cc, 50), text_size=size.small)
     
-    table.cell(cpanel, 0, 1, "Kill Zone", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 1, kz_ok ? "✅" : "❌", text_size=size.tiny)
+    table.cell(cpanel, 0, 1, "⚡ DISCOUNT", text_color=in_discount ? #00ff88 : color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 1, in_discount ? "✅ TRIGGER" : "❌", text_size=size.tiny)
     
-    table.cell(cpanel, 0, 2, "Discount", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 2, in_discount ? "✅" : "❌", text_size=size.tiny)
+    table.cell(cpanel, 0, 2, "💪 Strength", text_color=color.white, text_size=size.tiny)
+    table.cell(cpanel, 1, 2, str.tostring(strength_score) + "/9", text_color=strength_score >= 6 ? #00ff88 : strength_score >= 4 ? #ffcc00 : #ff6666, text_size=size.tiny)
     
-    table.cell(cpanel, 0, 3, "OTE Zone", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 3, in_ote_zone ? "✅✅" : "❌", text_size=size.tiny)
+    table.cell(cpanel, 0, 3, "Kill Zone", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 3, kz_ok ? "+1" : "—", text_color=kz_ok ? #00ff88 : color.gray, text_size=size.tiny)
     
-    table.cell(cpanel, 0, 4, "Order Block", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 4, in_bull_ob ? "✅" : "❌", text_size=size.tiny)
+    table.cell(cpanel, 0, 4, "OTE Zone", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 4, in_ote_zone ? "+2" : "—", text_color=in_ote_zone ? #00ff88 : color.gray, text_size=size.tiny)
     
-    table.cell(cpanel, 0, 5, "FVG", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 5, in_fvg ? "✅" : "❌", text_size=size.tiny)
+    table.cell(cpanel, 0, 5, "Order Block", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 5, in_bull_ob ? "+1" : "—", text_color=in_bull_ob ? #00ff88 : color.gray, text_size=size.tiny)
     
-    table.cell(cpanel, 0, 6, "Displacement", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 6, displacement[1] or displacement[2] ? "✅" : "❌", text_size=size.tiny)
+    table.cell(cpanel, 0, 6, "FVG", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 6, in_fvg ? "+1" : "—", text_color=in_fvg ? #00ff88 : color.gray, text_size=size.tiny)
     
-    table.cell(cpanel, 0, 7, "Liquidity Sweep", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 7, swept_low ? "✅" : "❌", text_size=size.tiny)
+    table.cell(cpanel, 0, 7, "Displacement", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 7, displacement[1] or displacement[2] ? "+1" : "—", text_color=displacement[1] or displacement[2] ? #00ff88 : color.gray, text_size=size.tiny)
     
-    table.cell(cpanel, 0, 8, "Wave 2 Setup", text_color=color.gray, text_size=size.tiny)
-    table.cell(cpanel, 1, 8, wave2_setup ? "✅✅" : "❌", text_size=size.tiny)
+    table.cell(cpanel, 0, 8, "Liq Sweep", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 8, swept_low ? "+1" : "—", text_color=swept_low ? #00ff88 : color.gray, text_size=size.tiny)
     
-    table.cell(cpanel, 0, 9, "Min Required", text_color=color.white, text_size=size.tiny)
-    table.cell(cpanel, 1, 9, str.tostring(min_confluence), text_color=color.yellow, text_size=size.tiny)
+    table.cell(cpanel, 0, 9, "Wave 2", text_color=color.gray, text_size=size.tiny)
+    table.cell(cpanel, 1, 9, wave2_setup ? "+2" : "—", text_color=wave2_setup ? #00ff88 : color.gray, text_size=size.tiny)
 
 // ════════════════════════════════════════════════════════════════
 // 📈 STATS TABLE

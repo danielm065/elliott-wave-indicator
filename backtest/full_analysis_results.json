@@ -1,0 +1,296 @@
+{
+  "GOOG": {
+    "15m": {
+      "wins": 5,
+      "losses": 1,
+      "total": 6,
+      "win_rate": 83.33333333333334,
+      "open": 0
+    },
+    "Daily": {
+      "wins": 2,
+      "losses": 0,
+      "total": 2,
+      "win_rate": 100.0,
+      "open": 0
+    },
+    "4H": {
+      "wins": 6,
+      "losses": 4,
+      "total": 10,
+      "win_rate": 60.0,
+      "open": 0
+    },
+    "30m": {
+      "wins": 5,
+      "losses": 1,
+      "total": 6,
+      "win_rate": 83.33333333333334,
+      "open": 0
+    },
+    "5m": {
+      "wins": 0,
+      "losses": 1,
+      "total": 1,
+      "win_rate": 0.0,
+      "open": 0
+    },
+    "1H": {
+      "wins": 5,
+      "losses": 3,
+      "total": 8,
+      "win_rate": 62.5,
+      "open": 0
+    }
+  },
+  "MU": {
+    "15m": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    },
+    "Daily": {
+      "wins": 1,
+      "losses": 2,
+      "total": 3,
+      "win_rate": 33.33333333333333,
+      "open": 0
+    },
+    "1m": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    },
+    "4H": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    },
+    "30m": {
+      "wins": 1,
+      "losses": 1,
+      "total": 2,
+      "win_rate": 50.0,
+      "open": 0
+    },
+    "5m": {
+      "wins": 1,
+      "losses": 0,
+      "total": 1,
+      "win_rate": 100.0,
+      "open": 0
+    },
+    "1H": {
+      "wins": 0,
+      "losses": 1,
+      "total": 1,
+      "win_rate": 0.0,
+      "open": 0
+    }
+  },
+  "OSCR": {
+    "15m": {
+      "wins": 1,
+      "losses": 1,
+      "total": 2,
+      "win_rate": 50.0,
+      "open": 0
+    },
+    "Daily": {
+      "wins": 2,
+      "losses": 1,
+      "total": 3,
+      "win_rate": 66.66666666666666,
+      "open": 0
+    },
+    "1m": {
+      "wins": 2,
+      "losses": 0,
+      "total": 2,
+      "win_rate": 100.0,
+      "open": 0
+    },
+    "4H": {
+      "wins": 2,
+      "losses": 1,
+      "total": 3,
+      "win_rate": 66.66666666666666,
+      "open": 0
+    },
+    "30m": {
+      "wins": 1,
+      "losses": 1,
+      "total": 2,
+      "win_rate": 50.0,
+      "open": 0
+    },
+    "5m": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    },
+    "1H": {
+      "wins": 4,
+      "losses": 1,
+      "total": 5,
+      "win_rate": 80.0,
+      "open": 0
+    }
+  },
+  "PLTR": {
+    "15m": {
+      "wins": 1,
+      "losses": 0,
+      "total": 1,
+      "win_rate": 100.0,
+      "open": 0
+    },
+    "Daily": {
+      "wins": 5,
+      "losses": 2,
+      "total": 7,
+      "win_rate": 71.42857142857143,
+      "open": 0
+    },
+    "4H": {
+      "wins": 5,
+      "losses": 0,
+      "total": 5,
+      "win_rate": 100.0,
+      "open": 0
+    },
+    "30m": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    },
+    "5m": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    },
+    "1H": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    }
+  },
+  "RKLB": {
+    "15m": {
+      "wins": 1,
+      "losses": 1,
+      "total": 3,
+      "win_rate": 50.0,
+      "open": 1
+    },
+    "Daily": {
+      "wins": 2,
+      "losses": 0,
+      "total": 2,
+      "win_rate": 100.0,
+      "open": 0
+    },
+    "1m": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    },
+    "4H": {
+      "wins": 1,
+      "losses": 1,
+      "total": 3,
+      "win_rate": 50.0,
+      "open": 1
+    },
+    "30m": {
+      "wins": 1,
+      "losses": 0,
+      "total": 1,
+      "win_rate": 100.0,
+      "open": 0
+    },
+    "5m": {
+      "wins": 0,
+      "losses": 1,
+      "total": 1,
+      "win_rate": 0.0,
+      "open": 0
+    },
+    "1H": {
+      "wins": 0,
+      "losses": 1,
+      "total": 2,
+      "win_rate": 0.0,
+      "open": 1
+    }
+  },
+  "MNQ": {
+    "15m": {
+      "wins": 2,
+      "losses": 1,
+      "total": 3,
+      "win_rate": 66.66666666666666,
+      "open": 0
+    },
+    "Daily": {
+      "wins": 2,
+      "losses": 1,
+      "total": 3,
+      "win_rate": 66.66666666666666,
+      "open": 0
+    },
+    "1H": {
+      "wins": 2,
+      "losses": 0,
+      "total": 2,
+      "win_rate": 100.0,
+      "open": 0
+    },
+    "30m": {
+      "wins": 0,
+      "losses": 2,
+      "total": 2,
+      "win_rate": 0.0,
+      "open": 0
+    },
+    "4H": {
+      "wins": 2,
+      "losses": 1,
+      "total": 3,
+      "win_rate": 66.66666666666666,
+      "open": 0
+    },
+    "5m": {
+      "wins": 0,
+      "losses": 0,
+      "total": 0,
+      "win_rate": 0,
+      "open": 0
+    }
+  },
+  "NQ": {
+    "Daily": {
+      "wins": 3,
+      "losses": 1,
+      "total": 4,
+      "win_rate": 75.0,
+      "open": 0
+    }
+  }
+}
