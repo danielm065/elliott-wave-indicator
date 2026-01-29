@@ -67,7 +67,7 @@ auto_tp = is_monthly ? 1.618 :
 auto_zz = is_monthly ? 3 : 
           is_weekly ? 4 : 
           is_daily ? 4 :   // Optimized: 91% WR (10/11 assets) with RSI<45, tol=0.18
-          is_4h ? 6 : 
+          is_4h ? 4 :      // Optimized: 62% WR (10/16 assets) with RSI<50, tol=0.25 
           is_2h ? 5 : 
           is_1h ? 5 : 
           is_30m ? 4 :   // Optimized: 88.2% WR (15W/2L)
@@ -127,7 +127,7 @@ auto_disp_mult = is_monthly ? 2.5 :
 auto_rsi_thresh = is_monthly ? 55 : 
                   is_weekly ? 52 : 
                   is_daily ? 45 :   // Optimized: 91% WR (10/11 assets) with zz=4, tol=0.18
-                  is_4h ? 48 : 
+                  is_4h ? 50 :      // Optimized: 62% WR (10/16 assets) with zz=4, tol=0.25 
                   is_2h ? 46 : 
                   is_1h ? 45 : 
                   is_30m ? 42 : 
@@ -337,7 +337,7 @@ in_discount = not na(equilibrium) and close < equilibrium
 auto_fib_tol = is_monthly ? 0.10 : 
                is_weekly ? 0.12 : 
                is_daily ? 0.18 :   // Optimized: 91% WR (10/11 assets) with zz=4, RSI<45
-               is_4h ? 0.10 : 
+               is_4h ? 0.25 :      // Optimized: 62% WR (10/16 assets) with zz=4, RSI<50 
                is_2h ? 0.08 : 
                is_1h ? 0.05 : 
                is_30m ? 0.05 : 
