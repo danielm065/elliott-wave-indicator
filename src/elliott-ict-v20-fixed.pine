@@ -2,21 +2,25 @@
 indicator("Elliott + ICT v20 | 0.79 Fib Entry", overlay=true, max_labels_count=500, max_lines_count=500)
 
 // ════════════════════════════════════════════════════════════════
-// VERSION 20.1 - 0.79 FIB ENTRY (OPTIMIZED)
+// VERSION 20.2 - 0.79 FIB ENTRY (OPTIMIZED)
 // Signal fires when:
 //   1. Price touches 0.786 Fibonacci retracement level
-//   2. AND RSI filter (Daily: RSI < 45)
+//   2. AND RSI filter
 //   3. AND (SMT divergence OR FVG fill)
 // Entry: Immediate (market order) - price is already at the right level
 //
 // DAILY OPTIMIZATION (2026-01-29):
-//   - ZZ Depth: 4
-//   - Fib: 0.786
-//   - RSI: < 45
-//   - Tolerance: 18%
-//   - RR: 1.5
+//   - ZZ Depth: 4, Fib: 0.786, RSI: < 45, Tolerance: 18%, RR: 1.5
 //   - Result: 91% WR (10/11 assets passing)
 //   - Passing: AMD, ASTS, BTCUSDT, ETHUSD, GOOG, HIMS, IBKR, MU, OSCR, PLTR
+//
+// 4H OPTIMIZATION (2026-01-29):
+//   - ZZ Depth: 2, Fib: 0.786, RSI: < 40, Tolerance: 5%, Gap: 2, RR: 1.0
+//   - Result: 14/20 assets passing 80%+ WR
+//   - Passing: ADAUSDT, ASTS, BA, CRWV, ETHUSD, GOOG, IBKR, INTC, KRNT,
+//              OSCR, PLTR, RKLB, SOLUSD, TTWO
+//   - Failing: MNQ (50%), MU (67%)
+//   - No signals: AMD, BTCUSDT, HIMS, USDILS
 // ════════════════════════════════════════════════════════════════
 
 // Timeframe Detection
@@ -67,7 +71,7 @@ auto_tp = is_monthly ? 1.618 :
 auto_zz = is_monthly ? 3 : 
           is_weekly ? 4 : 
           is_daily ? 4 :   // Optimized: 91% WR (10/11 assets) with RSI<45, tol=0.18
-          is_4h ? 4 :      // Optimized: 62% WR (10/16 assets) with RSI<50, tol=0.25 
+          is_4h ? 2 :      // Optimized: 14/20 assets 80%+ WR, RR=1.0 (2026-01-29)
           is_2h ? 5 : 
           is_1h ? 5 : 
           is_30m ? 4 :   // Optimized: 88.2% WR (15W/2L)
@@ -103,7 +107,7 @@ auto_fib_entry = is_monthly ? 0.786 :
 auto_gap = is_monthly ? 2 : 
            is_weekly ? 2 : 
            is_daily ? 3 : 
-           is_4h ? 8 : 
+           is_4h ? 2 :    // Optimized: 14/20 assets 80%+ WR (2026-01-29)
            is_2h ? 10 : 
            is_1h ? 15 : 
            is_30m ? 8 :   // Optimized: 88.2% WR (15W/2L)
@@ -127,7 +131,7 @@ auto_disp_mult = is_monthly ? 2.5 :
 auto_rsi_thresh = is_monthly ? 55 : 
                   is_weekly ? 52 : 
                   is_daily ? 45 :   // Optimized: 91% WR (10/11 assets) with zz=4, tol=0.18
-                  is_4h ? 50 :      // Optimized: 62% WR (10/16 assets) with zz=4, tol=0.25 
+                  is_4h ? 40 :      // Optimized: 14/20 assets 80%+ WR (2026-01-29)
                   is_2h ? 46 : 
                   is_1h ? 45 : 
                   is_30m ? 42 : 
@@ -337,7 +341,7 @@ in_discount = not na(equilibrium) and close < equilibrium
 auto_fib_tol = is_monthly ? 0.10 : 
                is_weekly ? 0.12 : 
                is_daily ? 0.18 :   // Optimized: 91% WR (10/11 assets) with zz=4, RSI<45
-               is_4h ? 0.25 :      // Optimized: 62% WR (10/16 assets) with zz=4, RSI<50 
+               is_4h ? 0.05 :      // Optimized: 14/20 assets 80%+ WR (2026-01-29)
                is_2h ? 0.08 : 
                is_1h ? 0.05 : 
                is_30m ? 0.05 : 
