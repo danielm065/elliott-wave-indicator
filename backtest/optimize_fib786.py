@@ -1,4 +1,4 @@
-"""Test with RR=1.5"""
+"""Optimize with fib=0.786 fixed"""
 import os
 import sys
 sys.path.append(os.path.dirname(__file__))
@@ -26,20 +26,19 @@ for f in list(set(files)):
         pass
 
 print("="*60)
-print("SEARCHING BEST PARAMS WITH RR=1.5")
+print("OPTIMIZING WITH FIB=0.786 FIXED")
 print("="*60)
-print(f"Assets: {len(data)}")
 
-best_coverage = 0
+best_cov = 0
 best_params = None
 best_results = None
 
-for zz in [2, 3, 4, 5, 6, 8]:
-    for fib in [0.5, 0.618, 0.7, 0.786, 0.85, 0.9, 0.95]:
-        params = {'zigzag_depth': zz, 'fib_entry_level': fib, 'rr_ratio': 1.5}
+# Wide grid search
+for zz in [2, 3, 4, 5, 6, 8, 10, 12, 15]:
+    for rr in [0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.5, 1.8, 2.0]:
+        params = {'zigzag_depth': zz, 'fib_entry_level': 0.786, 'rr_ratio': rr}
         
-        ok = 0
-        valid = 0
+        ok, valid = 0, 0
         results = {}
         
         for asset, df in data.items():
@@ -56,28 +55,22 @@ for zz in [2, 3, 4, 5, 6, 8]:
         
         if valid >= 5:
             cov = ok / valid * 100
-            if cov > best_coverage:
-                best_coverage = cov
+            if cov > best_cov:
+                best_cov = cov
                 best_params = params.copy()
                 best_results = results.copy()
-                print(f"NEW BEST: zz={zz}, fib={fib} -> {cov:.0f}% ({ok}/{valid})")
+                passing = [a for a, r in results.items() if r['wr'] >= 85]
+                print(f"NEW: zz={zz}, RR={rr} -> {cov:.0f}% ({ok}/{valid})")
+                print(f"  Pass: {passing}")
 
-print(f"\n{'='*60}")
-print(f"BEST: {best_coverage:.0f}% with {best_params}")
-print(f"{'='*60}")
+print()
+print("="*60)
+print(f"BEST: {best_cov:.0f}% with zz={best_params['zigzag_depth']}, RR={best_params['rr_ratio']}")
+print("="*60)
 
 if best_results:
     print("\nAll results:")
-    passing = []
-    failing = []
     for a in sorted(best_results.keys()):
         r = best_results[a]
-        status = "OK" if r['wr'] >= 85 else "FAIL"
-        print(f"  {a:12s}: {r['w']:2d}W/{r['l']:2d}L = {r['wr']:5.1f}% [{status}]")
-        if r['wr'] >= 85:
-            passing.append(a)
-        else:
-            failing.append((a, r['wr']))
-    
-    print(f"\nPassing ({len(passing)}): {passing}")
-    print(f"Failing ({len(failing)}): {[(a, f'{wr:.0f}%') for a, wr in failing]}")
+        s = "OK" if r['wr'] >= 85 else "FAIL"
+        print(f"  {a:12s}: {r['w']:2d}W/{r['l']:2d}L = {r['wr']:5.1f}% [{s}]")
