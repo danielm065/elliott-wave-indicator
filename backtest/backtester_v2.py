@@ -1,6 +1,11 @@
 """
-Elliott + ICT Backtester v2
-Added: Bearish setups, FVG entries, multiple patterns
+Elliott + ICT Backtester v2 - IMPROVED
+Key improvements:
+1. Momentum confirmation (RSI rising)
+2. ATR volatility filter
+3. Candle pattern detection (reversal candles)
+4. Wave quality scoring
+5. Adaptive tolerance based on volatility
 """
 
 import pandas as pd
@@ -14,8 +19,6 @@ class Signal:
     entry: float
     tp: float
     sl: float
-    direction: int  # 1=long, -1=short
-    pattern: str    # 'fib', 'fvg', 'ob'
     filled: bool = False
     filled_bar: int = 0
     result: int = 0  # 0=open, 1=win, -1=loss
@@ -28,10 +31,6 @@ class BacktestResult:
     open_trades: int
     win_rate: float
     signals: List[Signal]
-    long_wins: int = 0
-    long_losses: int = 0
-    short_wins: int = 0
-    short_losses: int = 0
 
 class ElliottICTBacktesterV2:
     def __init__(self, df: pd.DataFrame, params: dict = None):
@@ -43,6 +42,7 @@ class ElliottICTBacktesterV2:
             if col not in self.df.columns:
                 raise ValueError(f"Missing required column: {col}")
         
+        # Default parameters
         self.params = {
             'zz_depth': 3,
             'zz_dev': 0.2,
@@ -50,35 +50,55 @@ class ElliottICTBacktesterV2:
             'fib_entry_level': 0.786,
             'fib_tolerance': 0.10,
             'use_rsi_filter': True,
-            'rsi_threshold': 50,
-            'use_trend_filter': True,
+            'rsi_threshold': 40,
+            'use_volume_filter': True,
+            'use_trend_filter': False,
             'ema_period': 200,
             'rr_ratio': 1.0,
-            # New params
-            'enable_longs': True,
-            'enable_shorts': True,
-            'enable_fvg': True,
-            'fvg_min_size': 0.001,  # Minimum FVG size as % of price
+            # NEW parameters
+            'use_momentum_filter': True,
+            'use_atr_filter': True,
+            'atr_period': 14,
+            'use_candle_filter': True,
+            'use_wave_quality': True,
+            'min_wave_quality': 0.5,
         }
         if params:
             self.params.update(params)
         
         self.signals: List[Signal] = []
         self.zigzag_points = []
-        self.fvg_zones = []
+        self._rsi = None
+        self._atr = None
+        self._ema = None
         
     def calculate_rsi(self, period=14) -> pd.Series:
-        delta = self.df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
+        if self._rsi is None:
+            delta = self.df['close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+            rs = gain / loss
+            self._rsi = 100 - (100 / (1 + rs))
+        return self._rsi
+    
+    def calculate_atr(self, period=14) -> pd.Series:
+        if self._atr is None:
+            high = self.df['high']
+            low = self.df['low']
+            close = self.df['close']
+            tr1 = high - low
+            tr2 = abs(high - close.shift())
+            tr3 = abs(low - close.shift())
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            self._atr = tr.rolling(window=period).mean()
+        return self._atr
     
     def calculate_ema(self, period=200) -> pd.Series:
-        return self.df['close'].ewm(span=period, adjust=False).mean()
+        if self._ema is None:
+            self._ema = self.df['close'].ewm(span=period, adjust=False).mean()
+        return self._ema
     
     def calculate_zigzag(self) -> List[Tuple[int, float, int]]:
-        """Returns list of (bar_index, price, direction) where direction: 1=high, -1=low"""
         depth = self.params['zz_depth']
         dev = self.params['zz_dev']
         
@@ -90,8 +110,17 @@ class ElliottICTBacktesterV2:
         last_price = 0.0
         
         for i in range(depth, len(self.df) - depth):
-            is_ph = all(highs[i] > highs[i - j] and highs[i] > highs[i + j] for j in range(1, depth + 1))
-            is_pl = all(lows[i] < lows[i - j] and lows[i] < lows[i + j] for j in range(1, depth + 1))
+            is_ph = True
+            for j in range(1, depth + 1):
+                if highs[i] <= highs[i - j] or highs[i] <= highs[i + j]:
+                    is_ph = False
+                    break
+            
+            is_pl = True
+            for j in range(1, depth + 1):
+                if lows[i] >= lows[i - j] or lows[i] >= lows[i + j]:
+                    is_pl = False
+                    break
             
             if is_ph and direction != 1:
                 if last_price == 0 or abs(highs[i] - last_price) / last_price * 100 >= dev:
@@ -114,47 +143,130 @@ class ElliottICTBacktesterV2:
         self.zigzag_points = points
         return points
     
-    def detect_fvg_zones(self) -> List[dict]:
-        """Detect Fair Value Gaps"""
-        fvgs = []
-        min_size = self.params['fvg_min_size']
+    def check_wave_quality(self, bar: int) -> float:
+        """
+        Score wave quality 0-1
+        Good waves: clean movement, not too choppy
+        """
+        points = [p for p in self.zigzag_points if p[0] <= bar]
+        if len(points) < 3:
+            return 0.0
         
-        for i in range(2, len(self.df)):
-            # Bullish FVG: Gap between bar[i-2] high and bar[i] low
-            prev_high = self.df['high'].iloc[i-2]
-            curr_low = self.df['low'].iloc[i]
-            
-            if curr_low > prev_high:
-                size = (curr_low - prev_high) / self.df['close'].iloc[i]
-                if size >= min_size:
-                    fvgs.append({
-                        'bar': i,
-                        'type': 'bullish',
-                        'top': curr_low,
-                        'bottom': prev_high,
-                        'mid': (curr_low + prev_high) / 2
-                    })
-            
-            # Bearish FVG: Gap between bar[i-2] low and bar[i] high
-            prev_low = self.df['low'].iloc[i-2]
-            curr_high = self.df['high'].iloc[i]
-            
-            if curr_high < prev_low:
-                size = (prev_low - curr_high) / self.df['close'].iloc[i]
-                if size >= min_size:
-                    fvgs.append({
-                        'bar': i,
-                        'type': 'bearish',
-                        'top': prev_low,
-                        'bottom': curr_high,
-                        'mid': (prev_low + curr_high) / 2
-                    })
+        p0 = points[-1]
+        p1 = points[-2]
+        p2 = points[-3]
         
-        self.fvg_zones = fvgs
-        return fvgs
+        # Wave 1: p2 to p1
+        wave1_bars = p1[0] - p2[0]
+        wave1_move = abs(p1[1] - p2[1])
+        
+        if wave1_bars == 0:
+            return 0.0
+        
+        # Calculate how "clean" the wave is
+        # Look at the path from p2 to p1
+        start_bar = p2[0]
+        end_bar = p1[0]
+        
+        if start_bar >= end_bar:
+            return 0.0
+        
+        # Sum of actual bar-to-bar movements
+        actual_path = 0.0
+        for i in range(start_bar, end_bar):
+            actual_path += abs(self.df['close'].iloc[i+1] - self.df['close'].iloc[i])
+        
+        if actual_path == 0:
+            return 0.0
+        
+        # Efficiency = direct move / actual path (1.0 = perfect straight line)
+        efficiency = wave1_move / actual_path
+        
+        return min(1.0, efficiency)
     
-    def check_bullish_fib_setup(self, bar: int) -> Tuple[bool, float, float, float]:
-        """Check for bullish Fib retracement entry"""
+    def check_reversal_candle(self, bar: int) -> bool:
+        """
+        Check for bullish reversal candle patterns:
+        - Hammer
+        - Bullish engulfing
+        - Piercing line
+        """
+        if bar < 1:
+            return False
+        
+        o = self.df['open'].iloc[bar]
+        h = self.df['high'].iloc[bar]
+        l = self.df['low'].iloc[bar]
+        c = self.df['close'].iloc[bar]
+        
+        o_prev = self.df['open'].iloc[bar-1]
+        h_prev = self.df['high'].iloc[bar-1]
+        l_prev = self.df['low'].iloc[bar-1]
+        c_prev = self.df['close'].iloc[bar-1]
+        
+        body = abs(c - o)
+        full_range = h - l
+        
+        if full_range == 0:
+            return False
+        
+        body_ratio = body / full_range
+        
+        # Current bar is bullish
+        is_bullish = c > o
+        
+        if not is_bullish:
+            return False
+        
+        # Hammer: small body at top, long lower wick
+        lower_wick = min(o, c) - l
+        upper_wick = h - max(o, c)
+        
+        is_hammer = (lower_wick > body * 2) and (upper_wick < body * 0.5) and body_ratio < 0.4
+        
+        # Bullish engulfing: current body engulfs previous body
+        prev_is_bearish = c_prev < o_prev
+        engulfs = c > o_prev and o < c_prev
+        is_engulfing = prev_is_bearish and engulfs and body > abs(c_prev - o_prev)
+        
+        # Strong bullish bar (large body, small wicks)
+        is_strong = body_ratio > 0.6 and lower_wick < body * 0.3
+        
+        return is_hammer or is_engulfing or is_strong
+    
+    def check_momentum_rising(self, bar: int) -> bool:
+        """Check if RSI is rising (momentum confirmation)"""
+        rsi = self.calculate_rsi()
+        if bar < 3:
+            return False
+        
+        rsi_now = rsi.iloc[bar]
+        rsi_prev = rsi.iloc[bar-2]
+        
+        if pd.isna(rsi_now) or pd.isna(rsi_prev):
+            return False
+        
+        return rsi_now > rsi_prev
+    
+    def check_atr_ok(self, bar: int) -> bool:
+        """Check if volatility is in good range (not too low, not extreme)"""
+        atr = self.calculate_atr()
+        if bar < 20:
+            return True
+        
+        atr_now = atr.iloc[bar]
+        atr_avg = atr.iloc[bar-20:bar].mean()
+        
+        if pd.isna(atr_now) or pd.isna(atr_avg) or atr_avg == 0:
+            return True
+        
+        ratio = atr_now / atr_avg
+        
+        # Allow if ATR is between 0.5x and 2x average
+        return 0.5 <= ratio <= 2.0
+    
+    def check_fib_entry(self, bar: int) -> Tuple[bool, float, float, float]:
+        """Check if price is at Fib retracement level for BULLISH setup"""
         points = [p for p in self.zigzag_points if p[0] <= bar]
         if len(points) < 2:
             return False, 0.0, 0.0, 0.0
@@ -177,164 +289,88 @@ class ElliottICTBacktesterV2:
         if swing_high <= swing_low:
             return False, 0.0, 0.0, 0.0
         
-        fib_level = self.params['fib_entry_level']
+        fib_level = self.params.get('fib_entry_level', 0.786)
         fib_price = swing_high - ((swing_high - swing_low) * fib_level)
         
         close = self.df['close'].iloc[bar]
         low = self.df['low'].iloc[bar]
         
-        tolerance = (swing_high - swing_low) * self.params['fib_tolerance']
-        at_fib = low <= fib_price and close >= (fib_price - tolerance)
+        # Adaptive tolerance based on ATR
+        base_tol = self.params.get('fib_tolerance', 0.10)
+        atr = self.calculate_atr()
+        if not pd.isna(atr.iloc[bar]):
+            atr_tol = atr.iloc[bar] * 0.5
+            tolerance = max(base_tol * (swing_high - swing_low), atr_tol)
+        else:
+            tolerance = base_tol * (swing_high - swing_low)
+        
+        at_fib = low <= fib_price + tolerance and close >= fib_price - tolerance
         
         return at_fib, fib_price, swing_high, swing_low
-    
-    def check_bearish_fib_setup(self, bar: int) -> Tuple[bool, float, float, float]:
-        """Check for bearish Fib retracement entry (SHORT)"""
-        points = [p for p in self.zigzag_points if p[0] <= bar]
-        if len(points) < 2:
-            return False, 0.0, 0.0, 0.0
-        
-        p0 = points[-1]
-        p1 = points[-2]
-        
-        swing_high = 0.0
-        swing_low = 0.0
-        
-        # Bearish: High -> Low (Wave 1 down)
-        if p1[2] == 1 and p0[2] == -1:
-            swing_high = p1[1]
-            swing_low = p0[1]
-        elif len(points) >= 3:
-            p2 = points[-3]
-            if p2[2] == 1 and p1[2] == -1 and p0[2] == 1:
-                swing_high = p2[1]
-                swing_low = p1[1]
-        
-        if swing_high <= swing_low:
-            return False, 0.0, 0.0, 0.0
-        
-        fib_level = self.params['fib_entry_level']
-        fib_price = swing_low + ((swing_high - swing_low) * fib_level)
-        
-        close = self.df['close'].iloc[bar]
-        high = self.df['high'].iloc[bar]
-        
-        tolerance = (swing_high - swing_low) * self.params['fib_tolerance']
-        at_fib = high >= fib_price and close <= (fib_price + tolerance)
-        
-        return at_fib, fib_price, swing_high, swing_low
-    
-    def check_fvg_entry(self, bar: int) -> Tuple[bool, int, float]:
-        """Check if price is entering an unfilled FVG"""
-        close = self.df['close'].iloc[bar]
-        low = self.df['low'].iloc[bar]
-        high = self.df['high'].iloc[bar]
-        
-        for fvg in self.fvg_zones:
-            if fvg['bar'] >= bar - 20 and fvg['bar'] < bar:  # Recent FVG
-                if fvg['type'] == 'bullish':
-                    if low <= fvg['mid'] <= high:
-                        return True, 1, fvg['mid']  # Long entry
-                elif fvg['type'] == 'bearish':
-                    if low <= fvg['mid'] <= high:
-                        return True, -1, fvg['mid']  # Short entry
-        
-        return False, 0, 0.0
     
     def run_backtest(self) -> BacktestResult:
-        """Run the backtest with multiple patterns"""
         self.signals = []
         self.calculate_zigzag()
-        self.detect_fvg_zones()
-        
-        rsi = self.calculate_rsi() if self.params['use_rsi_filter'] else None
-        ema = self.calculate_ema(self.params['ema_period']) if self.params['use_trend_filter'] else None
         
         last_signal_bar = -self.params['signal_gap'] - 1
         
-        for bar in range(self.params['zz_depth'] + 2, len(self.df) - 1):
+        for bar in range(self.params['zz_depth'] + 1, len(self.df) - 1):
             if bar - last_signal_bar <= self.params['signal_gap']:
                 continue
             
-            close = self.df['close'].iloc[bar]
+            at_fib, fib_price, swing_high, swing_low = self.check_fib_entry(bar)
+            if not at_fib:
+                continue
             
-            # === LONG SIGNALS ===
-            if self.params['enable_longs']:
-                # Pattern 1: Bullish Fib retracement
-                at_fib, fib_price, swing_high, swing_low = self.check_bullish_fib_setup(bar)
-                
-                if at_fib:
-                    # Filters
-                    rsi_ok = not self.params['use_rsi_filter'] or (rsi is not None and rsi.iloc[bar] < self.params['rsi_threshold'])
-                    trend_ok = not self.params['use_trend_filter'] or (ema is not None and close > ema.iloc[bar])
-                    bullish_candle = close > self.df['open'].iloc[bar]
-                    
-                    if rsi_ok and trend_ok and bullish_candle:
-                        entry = fib_price
-                        sl_buffer = (swing_high - swing_low) * 0.02
-                        sl = swing_low - sl_buffer
-                        risk = entry - sl
-                        tp = entry + (risk * self.params['rr_ratio'])
-                        
-                        self.signals.append(Signal(bar=bar, entry=entry, tp=tp, sl=sl, direction=1, pattern='fib'))
-                        last_signal_bar = bar
-                        continue
-                
-                # Pattern 2: Bullish FVG entry
-                if self.params['enable_fvg']:
-                    fvg_hit, fvg_dir, fvg_price = self.check_fvg_entry(bar)
-                    if fvg_hit and fvg_dir == 1:
-                        rsi_ok = not self.params['use_rsi_filter'] or (rsi is not None and rsi.iloc[bar] < self.params['rsi_threshold'])
-                        trend_ok = not self.params['use_trend_filter'] or (ema is not None and close > ema.iloc[bar])
-                        
-                        if rsi_ok and trend_ok:
-                            entry = fvg_price
-                            sl = self.df['low'].iloc[bar] * 0.99
-                            risk = entry - sl
-                            tp = entry + (risk * self.params['rr_ratio'])
-                            
-                            self.signals.append(Signal(bar=bar, entry=entry, tp=tp, sl=sl, direction=1, pattern='fvg'))
-                            last_signal_bar = bar
-                            continue
+            # Wave quality filter
+            if self.params.get('use_wave_quality', True):
+                quality = self.check_wave_quality(bar)
+                if quality < self.params.get('min_wave_quality', 0.5):
+                    continue
             
-            # === SHORT SIGNALS ===
-            if self.params['enable_shorts']:
-                # Pattern 1: Bearish Fib retracement
-                at_fib, fib_price, swing_high, swing_low = self.check_bearish_fib_setup(bar)
-                
-                if at_fib:
-                    # Filters (inverted for shorts)
-                    rsi_ok = not self.params['use_rsi_filter'] or (rsi is not None and rsi.iloc[bar] > (100 - self.params['rsi_threshold']))
-                    trend_ok = not self.params['use_trend_filter'] or (ema is not None and close < ema.iloc[bar])
-                    bearish_candle = close < self.df['open'].iloc[bar]
-                    
-                    if rsi_ok and trend_ok and bearish_candle:
-                        entry = fib_price
-                        sl_buffer = (swing_high - swing_low) * 0.02
-                        sl = swing_high + sl_buffer
-                        risk = sl - entry
-                        tp = entry - (risk * self.params['rr_ratio'])
-                        
-                        self.signals.append(Signal(bar=bar, entry=entry, tp=tp, sl=sl, direction=-1, pattern='fib'))
-                        last_signal_bar = bar
-                        continue
-                
-                # Pattern 2: Bearish FVG entry
-                if self.params['enable_fvg']:
-                    fvg_hit, fvg_dir, fvg_price = self.check_fvg_entry(bar)
-                    if fvg_hit and fvg_dir == -1:
-                        rsi_ok = not self.params['use_rsi_filter'] or (rsi is not None and rsi.iloc[bar] > (100 - self.params['rsi_threshold']))
-                        trend_ok = not self.params['use_trend_filter'] or (ema is not None and close < ema.iloc[bar])
-                        
-                        if rsi_ok and trend_ok:
-                            entry = fvg_price
-                            sl = self.df['high'].iloc[bar] * 1.01
-                            risk = sl - entry
-                            tp = entry - (risk * self.params['rr_ratio'])
-                            
-                            self.signals.append(Signal(bar=bar, entry=entry, tp=tp, sl=sl, direction=-1, pattern='fvg'))
-                            last_signal_bar = bar
-                            continue
+            # RSI filter
+            if self.params['use_rsi_filter']:
+                rsi = self.calculate_rsi().iloc[bar]
+                if pd.isna(rsi) or rsi >= self.params['rsi_threshold']:
+                    continue
+            
+            # Momentum filter (RSI rising)
+            if self.params.get('use_momentum_filter', True):
+                if not self.check_momentum_rising(bar):
+                    continue
+            
+            # ATR filter
+            if self.params.get('use_atr_filter', True):
+                if not self.check_atr_ok(bar):
+                    continue
+            
+            # Candle pattern filter
+            if self.params.get('use_candle_filter', True):
+                if not self.check_reversal_candle(bar):
+                    continue
+            
+            # Trend filter
+            if self.params['use_trend_filter']:
+                ema = self.calculate_ema().iloc[bar]
+                if pd.isna(ema) or self.df['close'].iloc[bar] <= ema:
+                    continue
+            
+            # Volume filter
+            if self.params['use_volume_filter']:
+                avg_vol = self.df['volume'].rolling(20).mean().iloc[bar]
+                if not pd.isna(avg_vol) and self.df['volume'].iloc[bar] < avg_vol * 0.5:
+                    continue
+            
+            # Create signal
+            entry = self.df['close'].iloc[bar]
+            sl_buffer = (swing_high - swing_low) * 0.02
+            sl = swing_low - sl_buffer
+            risk = entry - sl
+            rr_ratio = self.params.get('rr_ratio', 1.0)
+            tp = entry + (risk * rr_ratio)
+            
+            self.signals.append(Signal(bar=bar, entry=entry, tp=tp, sl=sl))
+            last_signal_bar = bar
         
         # Process signals
         for signal in self.signals:
@@ -345,32 +381,19 @@ class ElliottICTBacktesterV2:
                 low = self.df['low'].iloc[bar]
                 high = self.df['high'].iloc[bar]
                 
-                if signal.direction == 1:  # Long
-                    if low <= signal.sl:
-                        signal.result = -1
-                        break
-                    if high >= signal.tp:
-                        signal.result = 1
-                        break
-                else:  # Short
-                    if high >= signal.sl:
-                        signal.result = -1
-                        break
-                    if low <= signal.tp:
-                        signal.result = 1
-                        break
+                if low <= signal.sl:
+                    signal.result = -1
+                    break
+                
+                if high >= signal.tp:
+                    signal.result = 1
+                    break
         
-        # Calculate results
         wins = sum(1 for s in self.signals if s.result == 1)
         losses = sum(1 for s in self.signals if s.result == -1)
         open_trades = sum(1 for s in self.signals if s.result == 0)
-        total = len(self.signals)
-        win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
-        
-        long_wins = sum(1 for s in self.signals if s.result == 1 and s.direction == 1)
-        long_losses = sum(1 for s in self.signals if s.result == -1 and s.direction == 1)
-        short_wins = sum(1 for s in self.signals if s.result == 1 and s.direction == -1)
-        short_losses = sum(1 for s in self.signals if s.result == -1 and s.direction == -1)
+        total = wins + losses
+        win_rate = (wins / total * 100) if total > 0 else 0.0
         
         return BacktestResult(
             total=total,
@@ -378,31 +401,15 @@ class ElliottICTBacktesterV2:
             losses=losses,
             open_trades=open_trades,
             win_rate=win_rate,
-            signals=self.signals,
-            long_wins=long_wins,
-            long_losses=long_losses,
-            short_wins=short_wins,
-            short_losses=short_losses
+            signals=self.signals
         )
 
-
-def load_data(path: str) -> pd.DataFrame:
-    """Load CSV data"""
-    with open(path, 'r') as f:
-        header = f.readline().lower()
+def load_data(filepath: str) -> pd.DataFrame:
+    df = pd.read_csv(filepath)
+    df.columns = [str(c).lower() for c in df.columns]
     
-    if 'time,open' in header:
-        df = pd.read_csv(path)
-        if 'time' in df.columns:
-            df['time'] = pd.to_datetime(df['time'], unit='s')
-            df.set_index('time', inplace=True)
-        df.columns = [c.lower() for c in df.columns]
-        if 'volume' not in df.columns:
-            df['volume'] = 1
-        return df[['open', 'high', 'low', 'close', 'volume']]
-    else:
-        df = pd.read_csv(path, index_col=0, parse_dates=True)
-        df.columns = [c.lower() for c in df.columns]
-        if 'volume' not in df.columns:
-            df['volume'] = 1
-        return df
+    if 'time' in df.columns:
+        df['time'] = pd.to_datetime(df['time'])
+        df = df.set_index('time')
+    
+    return df
