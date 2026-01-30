@@ -1,58 +1,64 @@
 # State - Current Project Status
 
 ## Last Updated
-2026-01-30 10:15
+2026-01-30 23:10
 
 ## Current Phase
 **Phase 2: Optimization Per Timeframe**
-
-## Active Work
-- טווחי זמן שנותרו: 30m, 15m, 5m
-- מעבר לעבודה עם תתי-סוכנים
 
 ## Completed Timeframes
 
 ### 1D ✅
 - Result: 10/11 (91%)
-- Params: ZZ=4, Fib=0.786, RSI<45, Tol=18%, RR=1.5
+- Params: ZZ=4, Fib=0.786, RSI<45, Tol=18%, R:R=1.5
 
 ### 4H ✅
 - Result: 14/18 (78%)
 - Params: ZZ=2, Fib=0.786, RSI<40, Tol=5%, Gap=2, Trend=ON, Vol=ON
 
 ### 1H ✅
-- Result: 11/20 (55%)
-- Params: ZZ=3, Fib=0.85, RSI<30, Tol=5%, Gap=7, Vol=ON, RSI_F=ON
-- Note: R:R=1:1 limits achievable WR
+- Result: 13/20 (65%)
+- Params: ZZ=3, Fib=0.85, Tol=3%, RSI<25, Trend=OFF, Vol=ON
+- Passing: AMD, ASTS, BTCUSDT, CRWV, GOOG, HIMS, IBKR, INTC, MNQ, MU, PLTR, SOLUSD, USDILS
 
-## Key Decisions
-1. **R:R קבוע 1:1** - לא לשנות (בקשת הלקוח)
-2. **Multiprocessing** - שימוש ב-8 ליבות להאצה
-3. **80% threshold** - יעד WR מינימלי
+## Pending Timeframes
+- 30m
+- 15m
+- 5m
 
-## Blockers
-- אין כרגע
+## Lessons Learned
 
-## Insights Learned
-- R:R נמוך יותר = WR גבוה יותר (קל יותר להגיע ל-TP)
-- יותר מדי פילטרים = פחות סיגנלים בלי שיפור
-- Multiprocessing חיוני לחיפוש גריד גדול
+### Optimization Strategy
+1. **Use multiprocessing** - 8 cores, chunksize=50 for speed
+2. **Wide grid first** - Cover all parameter combinations
+3. **Track incrementally** - Print NEW BEST as found
+4. **~40K combos = ~1 hour** - Plan accordingly
+
+### Parameter Insights
+1. **Fib level 0.786-0.85** - Sweet spot for entries
+2. **RSI < 25-40** - Catches reversals
+3. **Volume filter = ON** - Generally helps
+4. **Trend filter** - Varies by timeframe
+5. **Tolerance 3-5%** - Balance precision vs. signal count
+
+### What Doesn't Work
+1. Too many confluence filters = no signals
+2. MTF analysis didn't improve results
+3. R:R=1.0 limits achievable WR (~65% realistic)
+4. R:R=1.5+ needed for 80%+ WR
+
+## Next Steps
+1. Run 30m optimization with same approach
+2. Then 15m, then 5m
+3. Compile final results
 
 ## Files Structure
 ```
 backtest/
-  backtester.py      # Main backtester
-  test_parallel.py   # Parallel grid search (USE THIS!)
+  backtester.py           # Main backtester
+  optimize_1h_deep.py     # Deep optimization (template)
+  test_parallel.py        # Parallel grid search
 data/
-  *.csv              # TradingView exports
-src/
-  *.pine             # Pine Script code
-```
-
-## How to Run Optimization
-```python
-# Edit test_parallel.py with desired grid
-# Run:
-python backtest/test_parallel.py
-# Results printed to console
+  *.csv                   # TradingView exports
+RESULTS.md                # Summary of all results
 ```

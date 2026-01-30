@@ -1,6 +1,5 @@
 """
-Deep optimization for 1H timeframe
-Goal: Improve from 55% to 80%+ assets passing
+Deep optimization for 1H timeframe - REMAINING 50%
 """
 import sys
 sys.path.insert(0, r'C:\Users\danie\projects\elliott-wave-indicator\backtest')
@@ -46,14 +45,13 @@ for asset, file in FILES_1H.items():
             pass
 print(f"Loaded {len(DATA)} assets", flush=True)
 
-# EXPANDED parameter grid for deep search
+# Same grid as before
 ZZ = [2, 3, 4, 5]
 FIB = [0.5, 0.618, 0.705, 0.786, 0.85, 0.9]
 TOL = [0.03, 0.05, 0.08, 0.10, 0.12, 0.15]
 GAP = [3, 5, 7, 10]
 RSI = [25, 30, 35, 40, 45, 50]
 DEV = [0.1, 0.2, 0.3]
-# Also test with/without filters
 TREND = [True, False]
 VOL = [True, False]
 
@@ -84,10 +82,16 @@ def test_combo(args):
     return (passing, args, results)
 
 if __name__ == '__main__':
-    combos = list(product(ZZ, FIB, TOL, GAP, RSI, DEV, TREND, VOL))
-    print(f"Testing {len(combos)} combinations for 1H optimization...", flush=True)
+    all_combos = list(product(ZZ, FIB, TOL, GAP, RSI, DEV, TREND, VOL))
     
-    best = {'passing': 0}
+    # Start from 50% (index 20736)
+    start_idx = 21500
+    combos = all_combos[start_idx:]
+    
+    print(f"Testing REMAINING {len(combos)} combinations (from {start_idx})...", flush=True)
+    
+    # Start with best known result
+    best = {'passing': 12}
     
     with Pool(processes=cpu_count()) as pool:
         for i, (passing, args, results) in enumerate(pool.imap_unordered(test_combo, combos, chunksize=50)):
@@ -105,10 +109,11 @@ if __name__ == '__main__':
                 print(f"  Progress: {i+1}/{len(combos)} ({pct:.0f}%) - best: {best['passing']}/20", flush=True)
     
     print(f"\n{'='*70}", flush=True)
-    print(f"BEST 1H RESULT: {best['passing']}/20 ({best['passing']/20*100:.0f}%)", flush=True)
-    print(f"Parameters:", flush=True)
-    print(f"  ZZ={best.get('zz')}, Fib={best.get('fib')}, Tol={best.get('tol')}, Gap={best.get('gap')}", flush=True)
-    print(f"  RSI<{best.get('rsi')}, Dev={best.get('dev')}, Trend={best.get('trend')}, Vol={best.get('vol')}", flush=True)
+    print(f"FINAL 1H RESULT: {best['passing']}/20 ({best['passing']/20*100:.0f}%)", flush=True)
+    if 'zz' in best:
+        print(f"Parameters:", flush=True)
+        print(f"  ZZ={best.get('zz')}, Fib={best.get('fib')}, Tol={best.get('tol')}, Gap={best.get('gap')}", flush=True)
+        print(f"  RSI<{best.get('rsi')}, Dev={best.get('dev')}, Trend={best.get('trend')}, Vol={best.get('vol')}", flush=True)
     print(f"{'='*70}", flush=True)
     
     if 'results' in best:
