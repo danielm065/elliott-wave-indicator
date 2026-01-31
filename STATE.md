@@ -1,7 +1,7 @@
 # State - Current Project Status
 
 ## Last Updated
-2026-01-30 23:10
+2026-01-31 10:15
 
 ## Current Phase
 **Phase 2: Optimization Per Timeframe**
@@ -19,10 +19,13 @@
 ### 1H ✅
 - Result: 13/20 (65%)
 - Params: ZZ=3, Fib=0.85, Tol=3%, RSI<25, Trend=OFF, Vol=ON
-- Passing: AMD, ASTS, BTCUSDT, CRWV, GOOG, HIMS, IBKR, INTC, MNQ, MU, PLTR, SOLUSD, USDILS
+
+### 30m ✅
+- Result: 13/20 (65%)
+- Params: ZZ=3, Fib=0.85, Tol=3%, Gap=10, RSI<25, Trend=OFF, Vol=ON
+- Passing: ADAUSDT, AMD, ASTS, BA, BTCUSDT, CRWV, ETHUSD, HIMS, IBKR, KRNT, MU, PLTR, TTWO
 
 ## Pending Timeframes
-- 30m
 - 15m
 - 5m
 
@@ -32,33 +35,36 @@
 1. **Use multiprocessing** - 8 cores, chunksize=50 for speed
 2. **Wide grid first** - Cover all parameter combinations
 3. **Track incrementally** - Print NEW BEST as found
-4. **~40K combos = ~1 hour** - Plan accordingly
+4. **~24K combos = ~1 hour** - Plan accordingly
+5. **Write status to JSON** - Enable external monitoring
+6. **Background process** - Use Start-Process for long runs
 
-### Parameter Insights
-1. **Fib level 0.786-0.85** - Sweet spot for entries
-2. **RSI < 25-40** - Catches reversals
-3. **Volume filter = ON** - Generally helps
-4. **Trend filter** - Varies by timeframe
-5. **Tolerance 3-5%** - Balance precision vs. signal count
+### Parameter Patterns Emerging
+- **ZZ=3** works well for 1H and 30m
+- **Fib=0.85** consistent across shorter timeframes
+- **RSI<25** - stricter for shorter TFs
+- **Trend=OFF** better for 1H/30m
+- **Vol=ON** generally helps
+- **Tolerance 3%** - tight but works
 
 ### What Doesn't Work
 1. Too many confluence filters = no signals
 2. MTF analysis didn't improve results
-3. R:R=1.0 limits achievable WR (~65% realistic)
-4. R:R=1.5+ needed for 80%+ WR
+3. R:R=1.0 limits achievable WR (~65% realistic for intraday)
+4. R:R=1.5+ needed for 80%+ WR (only works on daily)
 
 ## Next Steps
-1. Run 30m optimization with same approach
-2. Then 15m, then 5m
+1. Run 15m optimization
+2. Then 5m
 3. Compile final results
 
 ## Files Structure
 ```
 backtest/
-  backtester.py           # Main backtester
-  optimize_1h_deep.py     # Deep optimization (template)
-  test_parallel.py        # Parallel grid search
+  backtester.py               # Main backtester
+  optimize_30m_monitored.py   # 30m with JSON status
 data/
-  *.csv                   # TradingView exports
-RESULTS.md                # Summary of all results
+  *.csv                       # TradingView exports
+optimization_status.json      # Current run status
+RESULTS.md                    # Summary of all results
 ```

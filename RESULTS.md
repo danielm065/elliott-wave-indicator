@@ -7,7 +7,7 @@
 | 1D | 10 | 11 | 91% | ✅ |
 | 4H | 14 | 18 | 78% | ✅ |
 | 1H | 13 | 20 | 65% | ✅ |
-| 30m | - | - | - | Pending |
+| 30m | 13 | 20 | 65% | ✅ |
 | 15m | - | - | - | Pending |
 | 5m | - | - | - | Pending |
 
@@ -28,11 +28,19 @@ ZZ=2, Fib=0.786, RSI<40, Tol=5%, Gap=2, Trend=ON, Vol=ON
 
 ### 1H (Hourly)
 ```
-ZZ=3, Fib=0.85, Tol=3%, Gap=?, RSI<25, Trend=OFF, Vol=ON, R:R=1.0
+ZZ=3, Fib=0.85, Tol=3%, RSI<25, Trend=OFF, Vol=ON, R:R=1.0
 ```
 - Result: 13/20 (65%)
 - Passing: AMD, ASTS, BTCUSDT, CRWV, GOOG, HIMS, IBKR, INTC, MNQ, MU, PLTR, SOLUSD, USDILS
 - Failing: ADAUSDT (78%), BA (71%), ETHUSD (50%), KRNT (50%), OSCR (75%), RKLB (75%), TTWO (64%)
+
+### 30m (30-Minute)
+```
+ZZ=3, Fib=0.85, Tol=3%, Gap=10, RSI<25, Trend=OFF, Vol=ON, R:R=1.0
+```
+- Result: 13/20 (65%)
+- Passing: ADAUSDT, AMD, ASTS, BA, BTCUSDT, CRWV, ETHUSD, HIMS, IBKR, KRNT, MU, PLTR, TTWO
+- Failing: GOOG (60%), INTC (40%), MNQ (33%), OSCR (73%), RKLB (62%), SOLUSD (71%), USDILS (64%)
 
 ## Key Insights
 

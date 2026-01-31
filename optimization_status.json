@@ -1,0 +1,43 @@
+{
+  "timeframe": "30m",
+  "status": "completed",
+  "progress": 24000,
+  "total": 24000,
+  "percent": 100,
+  "best_passing": 13,
+  "best_params": {
+    "zz": 3,
+    "fib": 0.85,
+    "tol": 0.03,
+    "gap": 10,
+    "rsi": 25,
+    "trend": false,
+    "vol": true
+  },
+  "assets_loaded": 20,
+  "passing_assets": [
+    "ADAUSDT(100%,n=7)",
+    "AMD(83%,n=6)",
+    "ASTS(100%,n=3)",
+    "BA(83%,n=6)",
+    "BTCUSDT(100%,n=6)",
+    "CRWV(100%,n=6)",
+    "ETHUSD(80%,n=10)",
+    "HIMS(100%,n=5)",
+    "IBKR(86%,n=7)",
+    "KRNT(86%,n=7)",
+    "MU(100%,n=5)",
+    "PLTR(85%,n=13)",
+    "TTWO(80%,n=10)"
+  ],
+  "failing_assets": [
+    "GOOG(60%,n=15)",
+    "INTC(40%,n=5)",
+    "MNQ(33%,n=6)",
+    "OSCR(73%,n=15)",
+    "RKLB(62%,n=8)",
+    "SOLUSD(71%,n=7)",
+    "USDILS(64%,n=11)"
+  ],
+  "updated": "2026-01-31T00:17:44.023906"
+}
